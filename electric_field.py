@@ -1,4 +1,8 @@
 import numpy as np
+from numba import vectorize, float64, complex128
+from scipy.spatial.distance import cdist
+
+__all__ = ['PlaneWave', 'GaussianBeam', 'ScatteredField', "compute_expc"]
 
 class ScalarField(object):
     def __init__(self, E0, theta):
@@ -56,19 +60,21 @@ class GaussianBeam(ScalarField):
         return E
 
 
+@vectorize([complex128(float64)], nopython=True)
+def compute_expc(x):
+    if x == 0:
+        return 1
+    return np.exp(1j * 2 * np.pi * x) / (2 * np.pi * x)
+
 class ScatteredField(ScalarField):
-    def __init__(self, scatterers: np.array, amplitudes):
+    def __init__(self, scatterers: np.ndarray, amplitudes):
         self.scatterers = scatterers
         self.amplitudes = amplitudes
 
     def __call__(self, r):
-        xi, xj = np.meshgrid(self.scatterers[:, 0], r[:, 0].T)
-        yi, yj = np.meshgrid(self.scatterers[:, 1], r[:, 1].T)
-        zi, zj = np.meshgrid(self.scatterers[:, 2], r[:, 2].T)
+        norm = cdist(r, self.scatterers, metric='euclidean')
+        result = -self.amplitudes.T * compute_expc(norm)
 
-        norm = np.sqrt((xi - xj)**2 + (yi - yj)**2 + (zi - zj)**2)
-        norm[norm == 0] = np.inf  # Avoid division by zero
-
-        result = -self.amplitudes.T * ((np.exp(1j * 2 * np.pi * norm)) / (2 * np.pi * norm))
         E_scattered = np.sum(result, axis=1)
-        return E_scattered
+
+        return E_scattered.flatten()

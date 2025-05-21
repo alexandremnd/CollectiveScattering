@@ -16,7 +16,7 @@ def show_scatterers(scatteres: np.ndarray):
     ax.scatter(scatteres[:, 0], scatteres[:, 1], scatteres[:, 2])
     plt.show()
 
-def show_intensity_xOz(I, x, z, scatterers,  *arrow_directions):
+def show_intensity_xOz(I, x, z, scatterers,  *arrow_directions, cmap='binary'):
     x_max = np.max(scatterers[:, 0])
     x_min = np.min(scatterers[:, 0])
     z_max = np.max(scatterers[:, 2])
@@ -25,11 +25,11 @@ def show_intensity_xOz(I, x, z, scatterers,  *arrow_directions):
     fig = plt.figure()
     ax = fig.add_subplot()
 
-    surface = ax.pcolormesh(z, x, I, cmap='jet', norm=LogNorm(vmin=np.min(I), vmax=np.max(I)), shading='gouraud') # norm=LogNorm(vmin=np.min(I), vmax=np.max(I))
+    surface = ax.pcolormesh(z, x, I, cmap=cmap, norm=LogNorm(vmin=np.min(I), vmax=np.max(I)), shading='gouraud') # norm=LogNorm(vmin=np.min(I), vmax=np.max(I))
     fig.colorbar(surface, ax=ax)
 
-    rect = Rectangle((z_min, x_min), width=z_max-z_min, height=x_max-x_min, linewidth=1,
-                     edgecolor='red', facecolor='none')
+    rect = Rectangle((z_min, x_min), width=z_max-z_min, height=x_max-x_min, linewidth=1.5, linestyle='--',
+                     edgecolor='black', facecolor='none')
     ax.add_patch(rect)
 
     for direction in arrow_directions:

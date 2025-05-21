@@ -40,34 +40,6 @@ def compute_gamma_matrix(scatterers, gamma_matrix=None):
     # print(f"Gamma matrix condition number: {np.linalg.cond(gamma_matrix)} | High condition number may lead to numerical instability")
     return gamma_matrix
 
-def get_intensity_xOz(incident_field: PlaneWave | GaussianBeam, scattered_field: ScatteredField, scatterers, resolution=250, zoom=7):
-    """ Computes the intensity of the field in the xOz plane.
-
-    Args:
-        incident_field (PlaneWave | GaussianBeam):
-        scattered_field (ScatteredField): _description_
-        scatterers (_type_): _description_
-        resolution (int, optional): _description_. Defaults to 500.
-        zoom (int, optional): _description_. Defaults to 7.
-
-    Returns:
-        _type_: _description_
-    """
-    lim = np.max(np.abs(scatterers[:, 0:2]))
-
-    x = np.linspace(-zoom * lim, zoom * lim, resolution)
-    z = np.linspace(-zoom * lim, zoom * lim, resolution)
-
-    x, z = np.meshgrid(x, z)
-    x = x.reshape(x.shape[0] * x.shape[1], 1)
-    z = z.reshape(x.shape[0] * x.shape[1], 1)
-    y = np.zeros_like(x)
-    r = np.hstack((x, y, z))
-
-    I = np.abs(scattered_field(r) + incident_field(r))**2
-
-    return I.reshape((resolution, resolution)), x.reshape((resolution, resolution)), z.reshape((resolution, resolution))
-
 def compute_intensity_angular(incident_field: PlaneWave | GaussianBeam, scattered_field: ScatteredField, theta=None, phi=None, resolution=250, distance=10):
     return compute_mean_angular_intensity(1, incident_field, scattered_field, theta, phi, resolution, distance)
 
@@ -96,6 +68,45 @@ def compute_mean_angular_intensity(iterations: int, Na, Nd, Rd, d, a, detuning, 
 
     I /= iterations
     return I.reshape((resolution, resolution)), x, y, z
+
+def compute_mean_intensity(iterations: int, Na, Nd, Rd, d, a, incident_field: PlaneWave | GaussianBeam, detuning, resolution=250, zoom=7):
+    """ Computes the mean intensity of the field.
+    The mean intensity is defined as the average of the intensity over the iterations.
+
+    Args:
+        iterations (int): Number of iterations to compute the mean intensity.
+        Na (int): Number of scatterers.
+        Nd (int): Number of disks.
+        Rd (float): Radius of the disks.
+        d (float): Distance between the disks.
+        a (float): Thickness of the disks.
+        incident_field (PlaneWave | GaussianBeam): Incident field object.
+        detuning (float): Detuning of the incident field with the atomic transition.
+        resolution (int, optional): How much point per axis on which the total field is evaluated. Defaults to 250.
+        zoom (int, optional): How far away are we going ?. Defaults to 7.
+
+    Returns:
+        _type_: _description_
+    """
+    lim = (Nd-1) * d
+    extent = np.linspace(- zoom * lim, zoom * lim, resolution)
+
+    X, Z = np.meshgrid(extent, extent)
+    X = X.reshape((-1, 1))
+    Z = Z.reshape((-1, 1))
+    Y = np.zeros_like(X)
+    r = np.hstack((X, Y, Z))
+
+    I = np.zeros_like(X, dtype=np.float64).flatten()
+
+    for i in tqdm(range(iterations)):
+        scatterers = centered_optical_lattice(Na, Nd, Rd, d, a)
+        amplitudes = excited_probabilities(scatterers, incident_field, detuning)
+        scattered_field = ScatteredField(scatterers, amplitudes)
+        I += np.abs(scattered_field(r) + incident_field(r))**2
+
+    I /= iterations
+    return I, X.flatten(), Z.flatten(), scatterers
 
 def compute_time_intensity(scatterers, amplitudes, theta=None, phi=None, resolution=250, distance=10):
     """ Computes the time evolution of the intensity of the field.
@@ -128,22 +139,3 @@ def compute_time_intensity(scatterers, amplitudes, theta=None, phi=None, resolut
         I[i] = np.mean(np.abs(scattered_field(r))**2)
 
     return I
-
-
-
-def compute_mean_intensity(iterations: int, Na, Nd, Rd, d, a, incident_field: PlaneWave | GaussianBeam, detuning):
-
-    scatterers = centered_optical_lattice(Na, Nd, Rd, d, a)
-    amplitudes = excited_probabilities(scatterers, incident_field, detuning)
-    scattered_field = ScatteredField(scatterers, amplitudes)
-    I, x, z = get_intensity_xOz(incident_field, scattered_field, scatterers)
-
-    for i in tqdm(range(iterations - 1)):
-        scatterers = centered_optical_lattice(Na, Nd, Rd, d, a)
-        amplitudes = excited_probabilities(scatterers, incident_field, detuning)
-        scattered_field = ScatteredField(scatterers, amplitudes)
-        I_tmp, _, _ = get_intensity_xOz(incident_field, scattered_field, scatterers)
-        I += I_tmp
-
-    I /= iterations
-    return I, x, z, scatterers

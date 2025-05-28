@@ -2,7 +2,9 @@ import numpy as np
 from numba import vectorize, float64, complex128
 from scipy.spatial.distance import cdist
 
-__all__ = ['PlaneWave', 'GaussianBeam', 'ScatteredField', "compute_expc"]
+from numba_ufunc import compute_gaussian, expc
+
+__all__ = ['PlaneWave', 'GaussianBeam', 'ScatteredField']
 
 class ScalarField(object):
     def __init__(self, E0, theta):
@@ -27,7 +29,6 @@ class PlaneWave(ScalarField):
             np.ndarray: The electric field at the given position.
         """
         return self.E0 * np.exp(1j * 2 * np.pi * np.dot(self.u, r.T))
-
 
 class GaussianBeam(ScalarField):
     def __init__(self, E0, theta, w0):
@@ -54,27 +55,17 @@ class GaussianBeam(ScalarField):
         Rz[z != 0] = z[z != 0] * (1 + (zR / z[z != 0])**2) # Radius of curvature of the wavefront
 
         phase = np.arctan(z / zR)
-        E = self.E0 * (self.w0 / wz) * np.exp(-r2 / (wz**2)) * np.exp(
-            1j * 2 * np.pi * z + 1j * 2 * np.pi * r2 / (2 * Rz) - 1j * phase)
-
-        return E
-
-
-@vectorize([complex128(float64)], nopython=True)
-def compute_expc(x):
-    if x == 0:
-        return 1
-    return np.exp(1j * 2 * np.pi * x) / (2 * np.pi * x)
+        return compute_gaussian(z, self.E0, self.w0, r2, Rz, wz, phase)
 
 class ScatteredField(ScalarField):
     def __init__(self, scatterers: np.ndarray, amplitudes):
         self.scatterers = scatterers
         self.amplitudes = amplitudes
 
-    def __call__(self, r):
+    def __call__(self, r, out=None):
         norm = cdist(r, self.scatterers, metric='euclidean')
-        result = -self.amplitudes.T * compute_expc(norm)
+        result = -1j * self.amplitudes.T * expc(norm)
 
-        E_scattered = np.sum(result, axis=1)
-
-        return E_scattered.flatten()
+        if out is None:
+            return np.sum(result, axis=1)
+        return np.sum(result, axis=1, out=out)

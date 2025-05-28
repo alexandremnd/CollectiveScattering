@@ -2,6 +2,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from electric_field import *
+from numba_ufunc import expc
 
 def optical_lattice(Na, Nd, Rd, d, a, scatterers=None):
     """Generate a random distribution of scatterers in a disk.
@@ -17,7 +18,8 @@ def optical_lattice(Na, Nd, Rd, d, a, scatterers=None):
     Returns:
         np.ndarray: Coordinates of the scatterers in the form of a 2D array with shape (Na, 3).
     """
-    scatterers = np.empty((Na, 3), dtype=np.float64)
+    if scatterers is None:
+        scatterers = np.empty((Na, 3), dtype=np.float64)
 
     u = np.random.uniform(low=0, high=1, size=(Na,))
     theta = np.random.uniform(low=0, high=2 * np.pi, size=(Na,))
@@ -27,7 +29,7 @@ def optical_lattice(Na, Nd, Rd, d, a, scatterers=None):
 
     return scatterers
 
-def centered_optical_lattice(Na, Nd, Rd, d, a):
+def centered_optical_lattice(Na, Nd, Rd, d, a, scatterers=None):
     """Generate a centered random distribution of scatterers in a disk.
     The scatterers are distributed in a disk of radius Rd, with Nd disks along the z-axis,
     and the center of the disk is at the origin.
@@ -42,7 +44,7 @@ def centered_optical_lattice(Na, Nd, Rd, d, a):
     Returns:
         np.ndarray: Coordinates of the scatterers in the form of a 2D array with shape (Na, 3).
     """
-    scatterers = optical_lattice(Na, Nd, Rd, d, a)
+    scatterers = optical_lattice(Na, Nd, Rd, d, a, scatterers)
     scatterers -= np.array([0, 0, (Nd - 1) * d / 2])
     return scatterers
 
@@ -64,9 +66,9 @@ def excited_probabilities(scatterers: np.ndarray, incident_field: PlaneWave | Ga
 
     norm = cdist(scatterers, scatterers, metric='euclidean')
 
-    A = np.zeros((Na, Na), dtype=np.complex64)
+    A = np.empty((Na, Na), dtype=np.complex64)
 
-    A[norm != 0] = -0.5 * np.exp(2j * np.pi * norm[norm != 0]) / (2j * np.pi * norm[norm != 0])
-    A = A + np.diag((1j * detuning - 0.5) * np.ones(Na), 0)
-    X = np.dot(np.linalg.inv(A), B)
-    return X
+    A = -0.5 * expc(norm)
+    A = A + np.diag(1j * detuning * np.ones(Na), 0)
+
+    return np.linalg.solve(A, B)

@@ -43,14 +43,13 @@ def compute_gamma_matrix(scatterers, gamma_matrix=None):
 def compute_intensity_angular(incident_field: PlaneWave | GaussianBeam, scattered_field: ScatteredField, theta=None, phi=None, resolution=250, distance=10):
     return compute_mean_angular_intensity(1, incident_field, scattered_field, theta, phi, resolution, distance)
 
-def compute_mean_angular_intensity(iterations: int, Na, Nd, Rd, d, a, detuning, incident_field: PlaneWave | GaussianBeam, theta=None, phi=None, resolution=300, distance=1000):
+def compute_mean_angular_intensity(iterations: int, Na, Nd, Rd, d, a, detuning, incident_field: PlaneWave | GaussianBeam, theta=None, phi=None, resolution=300, distance=200):
     if theta is None:
         theta = np.linspace(0, np.pi, resolution)
     if phi is None:
         phi = np.linspace(0, 2 * np.pi, resolution)
 
     tt, pp = np.meshgrid(theta, phi)
-
     x = distance * np.sin(tt) * np.cos(pp)
     y = distance * np.sin(tt) * np.sin(pp)
     z = distance * np.cos(tt)
@@ -69,6 +68,31 @@ def compute_mean_angular_intensity(iterations: int, Na, Nd, Rd, d, a, detuning, 
     I /= iterations
     return I.reshape((resolution, resolution)), x, y, z
 
+def compute_mean_angular_intensity_fibonacci(iterations: int, Na, Nd, Rd, d, a, detuning, incident_field: PlaneWave | GaussianBeam, resolution=300, distance=200):
+    golden_ratio = 1.618033988749895
+    i = np.arange(0, resolution)
+    tt = np.arccos(1 - 2 * i / resolution)
+    pp = (2 * np.pi / golden_ratio) * i
+
+    r = np.empty((resolution, 3), dtype=np.float64)
+    r[:, 0] = distance * np.sin(tt) * np.cos(pp)
+    r[:, 1] = distance * np.sin(tt) * np.sin(pp)
+    r[:, 2] = distance * np.cos(tt)
+
+    I = np.zeros((resolution,), dtype=np.float64)
+
+    scatterers = np.empty((Na, 3), dtype=np.float64)
+
+    for i in tqdm(range(iterations)):
+        centered_optical_lattice(Na, Nd, Rd, d, a, scatterers)
+        amplitudes = excited_probabilities(scatterers, incident_field, detuning)
+        scattered_field = ScatteredField(scatterers, amplitudes)
+
+        I += np.abs(scattered_field(r) + incident_field(r))**2
+
+    I /= iterations
+    return I.flatten(), r
+
 def compute_mean_intensity(iterations: int, Na, Nd, Rd, d, a, incident_field: PlaneWave | GaussianBeam, detuning, resolution=250, zoom=7):
     """ Computes the mean intensity of the field.
     The mean intensity is defined as the average of the intensity over the iterations.
@@ -86,7 +110,7 @@ def compute_mean_intensity(iterations: int, Na, Nd, Rd, d, a, incident_field: Pl
         zoom (int, optional): How far away are we going ?. Defaults to 7.
 
     Returns:
-        _type_: _description_
+        np.ndarray, np.ndarray, np.ndarray, np.ndarray: Intensity (Resolution*Resolution), X-position (Resolution*Resolution), Z-Position (Resolution*Resolution), Scatterers (Na, 3).
     """
     lim = (Nd-1) * d
     extent = np.linspace(- zoom * lim, zoom * lim, resolution)
@@ -107,35 +131,3 @@ def compute_mean_intensity(iterations: int, Na, Nd, Rd, d, a, incident_field: Pl
 
     I /= iterations
     return I, X.flatten(), Z.flatten(), scatterers
-
-def compute_time_intensity(scatterers, amplitudes, theta=None, phi=None, resolution=250, distance=10):
-    """ Computes the time evolution of the intensity of the field.
-
-    Args:
-        scatterers (np.ndarray): Scatterers positions in 3D space (shape (Na, 3)).
-        amplitudes (np.ndarray): Amplitudes of the scattered field (shape (Na,)).
-
-    Returns:
-        np.ndarray: Time evolution of the intensity of the field (shape (Na,)).
-    """
-
-    if theta is None:
-        theta = np.linspace(0, np.pi, resolution)
-    if phi is None:
-        phi = np.linspace(0, 2 * np.pi, resolution)
-    resolution = len(theta)
-
-    tt, pp = np.meshgrid(theta, phi)
-    x = distance * np.sin(tt) * np.cos(pp)
-    y = distance * np.sin(tt) * np.sin(pp)
-    z = distance * np.cos(tt)
-    r = np.hstack((x.reshape(-1, 1), y.reshape(-1, 1), z.reshape(-1, 1)))
-
-    Nt = amplitudes.shape[1]
-    I = np.zeros((Nt), dtype=np.float64)
-
-    for i in range(Nt):
-        scattered_field = ScatteredField(scatterers, amplitudes[:, i])
-        I[i] = np.mean(np.abs(scattered_field(r))**2)
-
-    return I

@@ -187,3 +187,8 @@ cython_debug/
 /output
 *.png
 article.mplstyle
+
+*.csv
+*.out
+*.txt
+.venv/

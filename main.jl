@@ -3,6 +3,7 @@ using DifferentialEquations
 using ProgressBars
 using LinearAlgebra
 using BenchmarkTools
+using Plots
 
 
 # =============== General utility functions ===============
@@ -208,13 +209,15 @@ For a given simulation parameters, will average intensity of "iterations" config
 function mean_intensity(params::SimulationParameters{P, N}, incident_field::GaussianBeam{P}, X, Y, Z; iterations=100) where {P <: Real, N <: Integer}
     scatterers = similar(X, params.Na, 3)
     M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
+    dist = similar(X, Float64, params.Na, params.Na)
     E = similar(X, Complex{eltype(X)}, params.Na)
     A = similar(X, Complex{eltype(X)}, params.Na)
     intensity = zero(X)
 
     for i in ProgressBar(1:iterations)
         uniform_optical_lattice!(params, scatterers)
-        compute_system_matrix!(scatterers, M, params.Δ0)
+        distance!(dist, scatterers, 2.0π)
+        compute_system_matrix!(M, dist, params.Δ0)
 
         E .= convert(eltype(M), 0.5im) .* compute_field.(scatterers[:, 1], scatterers[:, 2], scatterers[:, 3], Ref(incident_field))
 
@@ -243,7 +246,6 @@ function dynamic_intensity(params::SimulationParameters{N, P}, incident_field::G
 
     for i in 1:iterations
         uniform_optical_lattice!(params, scatterers)
-        distance!(dist, scatterers, 2.0π)
         compute_system_matrix!(M, dist, params.Δ0)
 
         E .= convert(eltype(M), 0.5im) .* compute_field.(view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), Ref(incident_field))
@@ -277,11 +279,11 @@ a   = 0.07
 # Electric field parameters
 E0  = 1e-3
 w0  = 4.0
-θ   = deg2rad(90)
+θ   = deg2rad(30)
 d   = bragg_periodicity(deg2rad(30))
 
 # Others parameters
-nb_iterations = 1000
+nb_iterations = 10000
 
 # Computation
 
@@ -290,10 +292,24 @@ params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
 if_d = GaussianBeam(Float32(E0), Float32(w0), Float32(θ))
 params_d = SimulationParameters{Float32, Int32}(Na, Nd, Float32(Rd), Float32(a), Float32(d), Float32(Δ0))
-X, Z = build_xOz_plane(250, 90)
+X, Z = build_xOz_plane(350, 90)
 
 X_d = CuMatrix{Float32}(X)
 Z_d = CuMatrix{Float32}(Z)
 
-intensity = mean_intensity(params, incident_field, X_d, 0f0, Z_d; iterations=nb_iterations)
+intensity = mean_intensity(params, incident_field, X, 0.0, Z; iterations=nb_iterations)
 
+using Plots
+
+# Convert back to CPU for plotting
+X_cpu = Array(X_d)
+Z_cpu = Array(Z_d)
+intensity_cpu = Array(intensity)
+
+save_matrix_to_csv(intensity_cpu, "intensity_2D.csv")
+save_matrix_to_csv(X_cpu, "X_2D.csv")
+save_matrix_to_csv(Z_cpu, "Z_2D.csv")
+
+heatmap(X_cpu[1, :], Z_cpu[:, 1], log10.(intensity_cpu'),
+    xlabel="X", ylabel="Z", title="Intensity Distribution",
+    aspect_ratio=:equal, color=:jet)

@@ -192,3 +192,4 @@ article.mplstyle
 *.out
 *.txt
 .venv/
+*.ipynb

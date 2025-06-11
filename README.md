@@ -1,11 +1,11 @@
 <br />
 <div align="center">
     <a href="https://github.com/alexandremnd/CollectiveScattering">
-        <img src="img/illustration.png" alt="Logo" width="180" height="180">
+        <img src="img/illustration.png" alt="Logo" width="500" height="300">
     </a>
     <h3 align="center">Collective Scattering</h3>
     <p align="center">
-        A semi-classical approach to compute scattered field in cold atom gases organized in periodic medium.
+        A semi-classical approach to compute scattered field in cold atom gases organized in periodic medium (or not)
     </p>
 </div>
 
@@ -24,13 +24,10 @@
 ```
 
 
-# Authors
-- [Alexandre Menard](https://github.com/alexandremnd/)
-
 # Contributing
 Contributions are currently not expected as this is an internship project.
 
-# References
+<!-- # References -->
 
 
 # License

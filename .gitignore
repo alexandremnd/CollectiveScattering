@@ -189,6 +189,8 @@ cython_debug/
 article.mplstyle
 
 *.csv
+*.png
+!img/*.png
 *.out
 *.txt
 .venv/

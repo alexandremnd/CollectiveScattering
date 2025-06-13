@@ -1,7 +1,7 @@
 <br />
 <div align="center">
     <a href="https://github.com/alexandremnd/CollectiveScattering">
-        <img src="img/illustration.png" alt="Logo" width="500" height="300">
+        <img src="img/illustration.png" alt="Logo" width="400" height="250">
     </a>
     <h3 align="center">Collective Scattering</h3>
     <p align="center">

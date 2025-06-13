@@ -170,7 +170,7 @@ function compute_system_matrix!(M::AbstractGPUArray, scatterers::AbstractGPUArra
     @cuda threads=(32, 32) blocks=(cld(m, 32), cld(m, 32)) _compute_system_matrix!(M, scatterers, Δ0)
 end
 
-function _compute_system_matrix!(M, scatterers, Δ0)
+function _compute_system_matrix!(M, scatterers, delta0)
     i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
     j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
 
@@ -178,7 +178,7 @@ function _compute_system_matrix!(M, scatterers, Δ0)
     if i > m || j > n
         return nothing
     elseif i == j
-        @inbounds M[i, j] = -0.5f0 + 1.0f0im * Δ0
+        @inbounds M[i, j] = -0.5f0 + 1.0f0im * delta0
     else
         dist = zero(eltype(scatterers))
 
@@ -311,17 +311,14 @@ end
 
 function t_gpu(out, x, y, z, scatterers, amplitudes, max_shared)
     tx = threadIdx().x
-    ty = threadIdx().y
     i = (blockIdx().x - 1) * blockDim().x + tx
-    j = (blockIdx().y - 1) * blockDim().y + ty
 
-    m, n = size(out)
-    if i > m || j > n
+    if i > length(out)
         return nothing
     else
-        x_obs = x[j, i]
-        y_obs = y[j, i]
-        z_obs = z[j, i]
+        x_obs = x[i]
+        y_obs = y[i]
+        z_obs = z[i]
 
         shared_coords = CuDynamicSharedArray(Float32, (max_shared, 3))
         shared_amps = CuDynamicSharedArray(ComplexF32, max_shared, max_shared * 3 * sizeof(Float32))
@@ -335,8 +332,8 @@ function t_gpu(out, x, y, z, scatterers, amplitudes, max_shared)
             chunk_size = chunk_end - chunk_start + 1
 
             # Cooperative loading using all threads in block
-            thread_idx = (ty - 1) * blockDim().x + tx
-            threads_per_block = blockDim().x * blockDim().y
+            thread_idx = tx
+            threads_per_block = blockDim().x
 
             # Load coordinates and amplitudes
             for load_idx = thread_idx:threads_per_block:chunk_size
@@ -351,20 +348,22 @@ function t_gpu(out, x, y, z, scatterers, amplitudes, max_shared)
 
             sync_threads()
 
-            # Compute contributions from shared memory
-            for k = 1:chunk_size
-                @inbounds dx = shared_coords[k, 1] - x_obs
-                @inbounds dy = shared_coords[k, 2] - y_obs
-                @inbounds dz = shared_coords[k, 3] - z_obs
+            # # Compute contributions from shared memory
+            # for k = 1:chunk_size
+            #     @inbounds dx = shared_coords[k, 1] - x_obs
+            #     @inbounds dy = shared_coords[k, 2] - y_obs
+            #     @inbounds dz = shared_coords[k, 3] - z_obs
 
-                dist_sq = dx*dx + dy*dy + dz*dz
-                dist = 2.0f0π * CUDA.sqrt(dist_sq)
+            #     dist_sq = dx*dx + dy*dy + dz*dz
+            #     @fastmath dist = 2.0f0π * CUDA.sqrt(dist_sq)
 
-                @inbounds field_sum -= CUDA.cis(dist) / dist * shared_amps[k]
-            end
+            #     @fastmath @inbounds field_sum -= CUDA.cis(dist) / dist * shared_amps[k]
+            # end
 
             sync_threads()
         end
+
+        @inbounds out[i] = field_sum
     end
     return nothing
 end
@@ -481,6 +480,17 @@ nb_iterations = 10000
 incident_field = GaussianBeam(E0, w0, θ)
 params = SimulationParameters(4, Nd, Rd, a, d, Δ0)
 
+s_d = CuMatrix{Float32}(undef, Na, 3)
+m_d = CuMatrix{ComplexF32}(undef, Na, Na)
+e_d = CuVector{ComplexF32}(undef, Na)
+a_d = CuVector{ComplexF32}(undef, Na)
+
+uniform_optical_lattice!(params, s_d)
+compute_system_matrix!(m_d, s_d, params.Δ0)
+e_d .= convert(eltype(m_d), 0.5im) .* compute_field.(s_d[:, 1], s_d[:, 2], s_d[:, 3], Ref(incident_field))
+a_d = m_d \ e_d
+
+
 X, Z = build_xOz_plane(200, 90.0)
 out = similar(X, ComplexF32)
 
@@ -489,6 +499,9 @@ z_d = cu(Z)
 y_d = zero(x_d)
 out_d = ComplexF32.(zero(x_d))
 
-@benchmark CUDA.@sync begin
-    compute_field(out_d, x_d, y_d, z_d, incident_field)
-end
+# @benchmark CUDA.@sync begin
+#     compute_field(out_d, x_d, y_d, z_d, incident_field)
+# end
+
+@cuda threads=512 blocks=cld(length(x_d), 512) t_gpu(vec(out_d), vec(x_d), vec(y_d), vec(z_d), s_d, a_d, 512)
+display(Array(out_d))

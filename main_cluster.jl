@@ -121,22 +121,6 @@ function _uniform_optical_lattice!(params::SimulationParameters, scatterers, cen
 end
 
 # =============== System matrix computation functions ===============
-function distance!(out::AbstractMatrix, scatterers::AbstractMatrix, factor::Real=1.0)
-    @inbounds @batch for i in axes(out, 2)
-        xi = scatterers[i, 1]
-        yi = scatterers[i, 2]
-        zi = scatterers[i, 3]
-
-        for j in 1:i
-            diff = (xi - scatterers[j, 1])^2 +
-                    (yi - scatterers[j, 2])^2 +
-                    (zi - scatterers[j, 3])^2
-
-            out[j, i] = factor * sqrt(diff)
-        end
-    end
-end
-
 """
 Compute the system matrix for collective scattering calculations in-place.
 

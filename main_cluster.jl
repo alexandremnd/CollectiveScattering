@@ -1,6 +1,7 @@
 using CUDA, GPUArrays
 using Polyester
 using BenchmarkTools
+using ProgressBars
 
 # =============== Type definitions ===============
 struct SimulationParameters{T <: Real, N <: Integer}
@@ -218,32 +219,28 @@ arbitrary direction, taking into account beam divergence, wavefront curvature, a
 # Returns
 - `Complex`: Complex electric field amplitude at the specified position
 """
-function compute_field(out, x, y, z, field::GaussianBeam{<:Real})
-    @batch for i in axes(out, 2)
-        for j in axes(out, 1)
-            x = x[j, i]
-            y = y[j, i]
-            z = z[j, i]
+function compute_field!(out, x, y, z, field::GaussianBeam{<:Real})
+    out .= _compute_field.(x, y, z, Ref(field))
+end
 
-            proj_z = field.kx * x + field.ky * y + field.kz * z
+function _compute_field(x, y, z, field::GaussianBeam{<:Real})
+    proj_z = field.kx * x + field.ky * y + field.kz * z
 
-            proj_r2 = (field.u2x * x + field.u2y * y + field.u2z * z)^2 +
-                    (field.u3x * x + field.u3y * y + field.u3z * z)^2
+    proj_r2 = (field.u2x * x + field.u2y * y + field.u2z * z)^2 +
+            (field.u3x * x + field.u3y * y + field.u3z * z)^2
 
-            zR = π * field.w0^2
-            wZ = field.w0 * sqrt(1f0 + (proj_z / zR)^2)
-            phase = atan(proj_z / zR)
+    zR = π * field.w0^2
+    wZ = field.w0 * sqrt(1f0 + (proj_z / zR)^2)
+    phase = atan(proj_z / zR)
 
-            if proj_z == 0
-                out[j, i] = field.E0 * exp(-proj_r2 / field.w0^2)
-            end
-
-            Rz = proj_z * (1f0 + (zR / proj_z)^2)
-            E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2f0im * (proj_z + proj_r2 / (2 * Rz)) -1f0im * phase)
-
-            out[j, i] = E
-        end
+    if proj_z == 0
+        return field.E0 * exp(-proj_r2 / field.w0^2)
     end
+
+    Rz = proj_z * (1f0 + (zR / proj_z)^2)
+    E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2f0im * (proj_z + proj_r2 / (2 * Rz)) -1f0im * phase)
+
+    return E
 end
 
 function compute_field(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, field::GaussianBeam{<:Real})
@@ -302,23 +299,22 @@ using the free-space Green's function. Each scatterer contributes a spherical wa
 amplitude proportional to `amplitudes[i]` and phase determined by the distance from the
 scatterer to the observation point.
 """
-function compute_scattered_field(out, x, y, z, scatterers, amplitudes)
+function compute_scattered_field!(out, x, y, z, scatterers, amplitudes)
     @batch for i in axes(out, 2)
         for j in axes(out, 1)
             res = zero(eltype(out))
 
-            for i in axes(scatterers, 1)
-                dist = (scatterers[i, 1] - x)^2 + (scatterers[i, 2] - y)^2 + (scatterers[i, 3] - z)^2
+            for k in axes(scatterers, 1)
+                dist = (scatterers[k, 1] - x[j, i])^2 + (scatterers[k, 2] - y[j, i])^2 + (scatterers[k, 3] - z[j, i])^2
                 @fastmath dist = 2.0π * sqrt(dist)
-                @fastmath res -= cis(dist) / (dist) * amplitudes[i]
+                @fastmath res -= cis(dist) / (dist) * amplitudes[k]
             end
-
             @inbounds out[j, i] = res
         end
     end
 end
 
-function compute_scattered_field(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, scatterers::AbstractGPUArray, amplitudes::AbstractGPUArray)
+function compute_scattered_field!(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, scatterers::AbstractGPUArray, amplitudes::AbstractGPUArray)
     m = length(x)
     @cuda threads=1024 blocks=cld(m, 1024) _compute_scattered_field!(vec(out), vec(x), vec(y), vec(z), scatterers, amplitudes)
 end
@@ -390,21 +386,25 @@ lattice and solves the multiple scattering problem.
 function mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z; iterations=100)
     scatterers = similar(X, params.Na, 3)
     M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
-    dist = similar(X, Float64, params.Na, params.Na)
     E = similar(X, Complex{eltype(X)}, params.Na)
     A = similar(X, Complex{eltype(X)}, params.Na)
+
     intensity = zero(X)
+    scatt_intensity = zeros(Complex{eltype(X)}, size(X, 1), size(X, 2))
+    incident_intensity = _compute_field.(X, Y, Z, Ref(incident_field))
 
     for i in ProgressBar(1:iterations)
         uniform_optical_lattice!(params, scatterers)
-        distance!(dist, scatterers, 2.0π)
-        compute_system_matrix!(M, dist, params.Δ0)
+        compute_system_matrix!(M, scatterers, params.Δ0)
 
-        E .= convert(eltype(M), 0.5im) .* compute_field.(scatterers[:, 1], scatterers[:, 2], scatterers[:, 3], Ref(incident_field))
+        compute_field!(E, view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), incident_field)
+        E .*= convert(eltype(M), 0.5im)
 
         A .= M \ E
 
-        intensity .+= abs2.(compute_field.(X, Y, Z, Ref(incident_field)) .+ compute_scattered_field.(X, Y, Z, Ref(scatterers), Ref(A)))
+        compute_scattered_field!(scatt_intensity, X, Y, Z, scatterers, A)
+        intensity .= abs2.(scatt_intensity + incident_intensity)
+
     end
     intensity ./= iterations * incident_field.E0^2
 
@@ -422,49 +422,23 @@ a   = 0.07
 # Electric field parameters
 E0  = 1e-3
 w0  = 4.0
-θ   = deg2rad(90)
+θ   = deg2rad(30)
 d   = bragg_periodicity(deg2rad(30))
 
 # Others parameters
 nb_iterations = 10000
 
 incident_field = GaussianBeam(E0, w0, θ)
-params = SimulationParameters(4, Nd, Rd, a, d, Δ0)
-
-s_d = CuMatrix{Float32}(undef, Na, 3)
-m_d = CuMatrix{ComplexF32}(undef, Na, Na)
-e_d = CuVector{ComplexF32}(undef, Na)
-a_d = CuVector{ComplexF32}(undef, Na)
-
-uniform_optical_lattice!(params, s_d)
-compute_system_matrix!(m_d, s_d, params.Δ0)
-e_d .= convert(eltype(m_d), 0.5im) .* compute_field.(s_d[:, 1], s_d[:, 2], s_d[:, 3], Ref(incident_field))
-a_d = m_d \ e_d
-
+params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
 X, Z = build_xOz_plane(200, 90.0)
-out = similar(X, ComplexF32)
 
-x_d = cu(X)
-z_d = cu(Z)
-y_d = zero(x_d)
-out_d = ComplexF32.(zero(x_d))
-out_d1 = similar(out_d)
-# @benchmark CUDA.@sync begin
-#     compute_field(out_d, x_d, y_d, z_d, incident_field)
-# end
+intensity = mean_intensity(params, incident_field, X, 0.0, Z; iterations=50)
 
-shmem_bits = 512 * 3 * sizeof(Float32) + 512 * sizeof(ComplexF32)
+using Plots
 
-
-@benchmark CUDA.@sync begin
-    @cuda threads=512 blocks=cld(length(x_d), 512) shmem=shmem_bits t_gpu(vec(out_d1), vec(x_d), vec(y_d), vec(z_d), s_d, a_d, 512)
-end
-
-
-@benchmark CUDA.@sync begin
-    @cuda threads=1024 blocks=cld(length(x_d), 1024) t_noshared(vec(out_d), vec(x_d), vec(y_d), vec(z_d), s_d, a_d)
-end
-    display(out_d)
-display(out_d1)
-
+heatmap(log10.(intensity'),
+    title="Mean Scattered Light Intensity",
+    xlabel="X Position",
+    ylabel="Z Position",
+    color=:viridis)

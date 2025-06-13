@@ -218,23 +218,32 @@ arbitrary direction, taking into account beam divergence, wavefront curvature, a
 # Returns
 - `Complex`: Complex electric field amplitude at the specified position
 """
-function compute_field(x::Real, y::Real, z::Real, field::GaussianBeam{<:Real})
-    proj_z = field.kx * x + field.ky * y + field.kz * z
+function compute_field(out, x, y, z, field::GaussianBeam{<:Real})
+    @batch for i in axes(out, 2)
+        for j in axes(out, 1)
+            x = x[j, i]
+            y = y[j, i]
+            z = z[j, i]
 
-    proj_r2 = (field.u2x * x + field.u2y * y + field.u2z * z)^2 +
-              (field.u3x * x + field.u3y * y + field.u3z * z)^2
+            proj_z = field.kx * x + field.ky * y + field.kz * z
 
-    zR = π * field.w0^2
-    wZ = field.w0 * sqrt(1f0 + (proj_z / zR)^2)
-    phase = atan(proj_z / zR)
+            proj_r2 = (field.u2x * x + field.u2y * y + field.u2z * z)^2 +
+                    (field.u3x * x + field.u3y * y + field.u3z * z)^2
 
-    if proj_z == 0
-        return field.E0 * exp(-proj_r2 / field.w0^2)
+            zR = π * field.w0^2
+            wZ = field.w0 * sqrt(1f0 + (proj_z / zR)^2)
+            phase = atan(proj_z / zR)
+
+            if proj_z == 0
+                out[j, i] = field.E0 * exp(-proj_r2 / field.w0^2)
+            end
+
+            Rz = proj_z * (1f0 + (zR / proj_z)^2)
+            E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2f0im * (proj_z + proj_r2 / (2 * Rz)) -1f0im * phase)
+
+            out[j, i] = E
+        end
     end
-
-    Rz = proj_z * (1f0 + (zR / proj_z)^2)
-    E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2f0im * (proj_z + proj_r2 / (2 * Rz)) -1f0im * phase)
-    return E
 end
 
 function compute_field(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, field::GaussianBeam{<:Real})
@@ -309,7 +318,16 @@ function compute_scattered_field(out, x, y, z, scatterers, amplitudes)
     end
 end
 
-function t_gpu(out, x, y, z, scatterers, amplitudes, max_shared)
+function compute_scattered_field(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, scatterers::AbstractGPUArray, amplitudes::AbstractGPUArray)
+    m = length(x)
+    @cuda threads=1024 blocks=cld(m, 1024) _compute_scattered_field!(vec(out), vec(x), vec(y), vec(z), scatterers, amplitudes)
+end
+
+"""
+Compute the scattered field at observation points using CUDA.
+This is not a public function, but rather an internal implementation detail, do not call directly and use `compute_scattered_field` instead.
+"""
+function _compute_scattered_field!(out, x, y, z, scatterers, amplitudes)
     tx = threadIdx().x
     i = (blockIdx().x - 1) * blockDim().x + tx
 
@@ -320,47 +338,18 @@ function t_gpu(out, x, y, z, scatterers, amplitudes, max_shared)
         y_obs = y[i]
         z_obs = z[i]
 
-        shared_coords = CuDynamicSharedArray(Float32, (max_shared, 3))
-        shared_amps = CuDynamicSharedArray(ComplexF32, max_shared, max_shared * 3 * sizeof(Float32))
-
         field_sum = zero(eltype(out))
         num_scatterers = size(scatterers, 1)
 
-        # Process scatterers in chunks
-        for chunk_start = 1:max_shared:num_scatterers
-            chunk_end = min(chunk_start + max_shared - 1, num_scatterers)
-            chunk_size = chunk_end - chunk_start + 1
+        for j in 1:num_scatterers
+            @inbounds dx = scatterers[j, 1] - x_obs
+            @inbounds dy = scatterers[j, 2] - y_obs
+            @inbounds dz = scatterers[j, 3] - z_obs
 
-            # Cooperative loading using all threads in block
-            thread_idx = tx
-            threads_per_block = blockDim().x
+            dist_sq = dx*dx + dy*dy + dz*dz
+            @fastmath dist = 2.0f0π * CUDA.sqrt(dist_sq)
 
-            # Load coordinates and amplitudes
-            for load_idx = thread_idx:threads_per_block:chunk_size
-                if load_idx <= chunk_size
-                    global_idx = chunk_start + load_idx - 1
-                    @inbounds shared_coords[load_idx, 1] = scatterers[global_idx, 1]
-                    @inbounds shared_coords[load_idx, 2] = scatterers[global_idx, 2]
-                    @inbounds shared_coords[load_idx, 3] = scatterers[global_idx, 3]
-                    @inbounds shared_amps[load_idx] = amplitudes[global_idx]
-                end
-            end
-
-            sync_threads()
-
-            # # Compute contributions from shared memory
-            # for k = 1:chunk_size
-            #     @inbounds dx = shared_coords[k, 1] - x_obs
-            #     @inbounds dy = shared_coords[k, 2] - y_obs
-            #     @inbounds dz = shared_coords[k, 3] - z_obs
-
-            #     dist_sq = dx*dx + dy*dy + dz*dz
-            #     @fastmath dist = 2.0f0π * CUDA.sqrt(dist_sq)
-
-            #     @fastmath @inbounds field_sum -= CUDA.cis(dist) / dist * shared_amps[k]
-            # end
-
-            sync_threads()
+            @fastmath @inbounds field_sum -= CUDA.cis(dist) / dist * amplitudes[j]
         end
 
         @inbounds out[i] = field_sum
@@ -422,44 +411,6 @@ function mean_intensity(params::SimulationParameters, incident_field::GaussianBe
     return intensity
 end
 
-function f(du, u, p, t)
-    mul!(du, p, u)
-    return nothing
-end
-
-function dynamic_intensity(params::SimulationParameters{N, P}, incident_field::GaussianBeam{P}, t_span, X, Y, Z; iterations=100) where {P <: Real, N <: Integer}
-    scatterers = similar(X, params.Na, 3)
-    M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
-    dist = similar(X, Float64, params.Na, params.Na)
-    E = similar(X, Complex{eltype(X)}, params.Na)
-    A = similar(X, Complex{eltype(X)}, params.Na)
-    field = zero(X)
-    intensity = zeros(size(X, 1), length(t_span))
-
-    for i in 1:iterations
-        uniform_optical_lattice!(params, scatterers)
-        compute_system_matrix!(M, dist, params.Δ0)
-
-        E .= convert(eltype(M), 0.5im) .* compute_field.(view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), Ref(incident_field))
-        A .= M \ E
-
-        problem = ODEProblem(f, A, (t_span[begin], t_span[end]), M)
-        sol = solve(problem, Tsit5())
-
-        k = 1
-        for t in t_span
-            A .= sol(t)
-            field .= abs2.(compute_field.(X, Y, Z, Ref(incident_field)) .+ compute_scattered_field.(X, Y, Z, Ref(scatterers), Ref(A)))
-            intensity[:, k] += sum(field, dims=2) / size(field, 2)
-            k += 1
-        end
-
-    end
-    intensity ./= intensity[:, 1]
-
-    return intensity
-end
-
 # ================== Main ==================
 # Simulation parameters
 Na  = 1000
@@ -498,10 +449,22 @@ x_d = cu(X)
 z_d = cu(Z)
 y_d = zero(x_d)
 out_d = ComplexF32.(zero(x_d))
-
+out_d1 = similar(out_d)
 # @benchmark CUDA.@sync begin
 #     compute_field(out_d, x_d, y_d, z_d, incident_field)
 # end
 
-@cuda threads=512 blocks=cld(length(x_d), 512) t_gpu(vec(out_d), vec(x_d), vec(y_d), vec(z_d), s_d, a_d, 512)
-display(Array(out_d))
+shmem_bits = 512 * 3 * sizeof(Float32) + 512 * sizeof(ComplexF32)
+
+
+@benchmark CUDA.@sync begin
+    @cuda threads=512 blocks=cld(length(x_d), 512) shmem=shmem_bits t_gpu(vec(out_d1), vec(x_d), vec(y_d), vec(z_d), s_d, a_d, 512)
+end
+
+
+@benchmark CUDA.@sync begin
+    @cuda threads=1024 blocks=cld(length(x_d), 1024) t_noshared(vec(out_d), vec(x_d), vec(y_d), vec(z_d), s_d, a_d)
+end
+    display(out_d)
+display(out_d1)
+

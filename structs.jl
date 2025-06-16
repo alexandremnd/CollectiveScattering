@@ -20,7 +20,7 @@ performance optimization.
 - `d`: Distance between disks
 - `Δ0`: Detuning between the laser frequency and the atomic resonance frequency
 """
-struct SimulationParameters{T <: Real, N <: Integer}
+mutable struct SimulationParameters{T <: Real, N <: Integer}
     Na::N
     Nd::N
     Rd::T

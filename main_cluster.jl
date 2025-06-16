@@ -390,21 +390,21 @@ end
 
 function reflection_coeff(params::SimulationParameters, incident_field::GaussianBeam, iterations=100)
     scatterers = zeros(params.Na, 3)
-    M = zeros(Complex{eltype(X)}, params.Na, params.Na)
-    E = zeros(Complex{eltype(X)}, params.Na)
-    A = zeros(Complex{eltype(X)}, params.Na)
+    M = zeros(ComplexF64, params.Na, params.Na)
+    E = zeros(ComplexF64, params.Na)
+    A = zeros(ComplexF64, params.Na)
 
     X_inc, Y_inc, Z_inc = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(0, 0, length=5))
     X_refl, Y_refl, Z_refl = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(π, π, length=5))
 
     intensity_inc = zero(X_inc)
     scatt_intensity_inc = zeros(Complex{eltype(X_inc)}, size(X_inc, 1), size(X_inc, 2))
-    beam_intensity_inc = similar(X, Complex{eltype(X_inc)}, size(X_inc, 1), size(X_inc, 2))
+    beam_intensity_inc = zeros(Complex{eltype(X_inc)}, size(X_inc, 1), size(X_inc, 2))
     compute_field!(beam_intensity_inc, X_inc, Y_inc, Z_inc, incident_field)
 
     intensity_refl = zero(X_refl)
-    scatt_intensity_refl = similar(X, Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
-    beam_intensity_refl = similar(X, Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
+    scatt_intensity_refl = zeros(Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
+    beam_intensity_refl = zeros(Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
     compute_field!(beam_intensity_refl, X_refl, Y_refl, Z_refl, incident_field)
 
     R = 0.0
@@ -433,7 +433,7 @@ end
 
 # ================== Main ==================
 # Simulation parameters
-Na  = 300
+Na  = 1000
 Nd  = 20
 Rd  = 9.0
 a   = 0.07
@@ -449,20 +449,27 @@ d   = bragg_periodicity(deg2rad(10))
 nb_iterations = 10000
 
 incident_field = GaussianBeam(E0, w0, θ)
-params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
+# params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
-X, Z = build_xOz_plane(100, 90.0)
-X_d = cu(X)
-Z_d = cu(Z)
-Y_d = zero(X_d)
+# intensity = mean_intensity(params, incident_field, X, 0.0, Z, 3000)
+# R = reflection_coeff(params, incident_field, 50)
 
-intensity = mean_intensity(params, incident_field, X, 0.0, Z, 3000)
-R = reflection_coeff(params, incident_field, 50)
+i = 1
+Δ0_span = range(-1.0, 1.0, length=21)
+R = zeros(length(Δ0_span))
+for i in axes(Δ0_span, 1)
+    params = SimulationParameters(Na, Nd, Rd, a, d, Δ0_span[i])
+    R[i] = reflection_coeff(params, incident_field, 3000)
+    println("Δ0: $Δ0[i], Reflection coefficient: $(R[i])")
+end
 
-using Plots
-X_inc, Y_inc, Z_inc = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(0, 0, length=1))
-X_refl, Y_refl, Z_refl = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(π, π, length=1))
+save_matrix_to_csv(R, "reflection_coefficients.csv")
+save_matrix_to_csv(collect(Δ0_span), "detuning_values.csv")
 
-heatmap(Z[:, 1], X[1, :], log10.(Array(intensity)'), title="Mean intensity distribution", xlabel="Z (m)", ylabel="X (m)", color=:jet, aspect_ratio=:equal)
-scatter!(vec(Z_inc), vec(X_inc), label="Incident point", color=:green, aspect_ratio=:equal)
-scatter!(vec(Z_refl), vec(X_refl), label="Reflection point", color=:blue, aspect_ratio=:equal)
+# using Plots
+# X_inc, Y_inc, Z_inc = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(0, 0, length=1))
+# X_refl, Y_refl, Z_refl = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(π, π, length=1))
+
+# heatmap(Z[:, 1], X[1, :], log10.(Array(intensity)'), title="Mean intensity distribution", xlabel="Z (m)", ylabel="X (m)", color=:jet, aspect_ratio=:equal)
+# scatter!(vec(Z_inc), vec(X_inc), label="Incident point", color=:green, aspect_ratio=:equal)
+# scatter!(vec(Z_refl), vec(X_refl), label="Reflection point", color=:blue, aspect_ratio=:equal)

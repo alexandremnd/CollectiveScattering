@@ -11,10 +11,10 @@
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
 echo
 
-julia -t auto main_print.jl
+julia -t auto src/main_print.jl
 
 echo "Running main simulation with job ID $SLURM_JOB_ID"
-julia -t auto main_cluster.jl
+julia -t auto src/main.jl $SLURM_JOB_ID
 
 echo
 echo "Job $SLURM_JOB_ID finished on $(hostname) at $(date)"

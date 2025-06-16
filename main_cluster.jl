@@ -3,34 +3,7 @@ using Polyester
 using BenchmarkTools
 using ProgressBars
 
-# =============== Type definitions ===============
-struct SimulationParameters{T <: Real, N <: Integer}
-    Na::N
-    Nd::N
-    Rd::T
-    a::T
-    d::T
-    Δ0::T
-end
-
-struct GaussianBeam{T <: Real}
-    E0::T
-    w0::T
-    θ::T
-
-    kx::T
-    ky::T
-    kz::T
-
-    u2x::T
-    u2y::T
-    u2z::T
-
-    u3x::T
-    u3y::T
-    u3z::T
-end
-GaussianBeam(E0, w0, θ) = GaussianBeam(E0, w0, θ, -sin(θ), zero(eltype(θ)), cos(θ), cos(θ), zero(eltype(θ)), sin(θ), zero(eltype(θ)), one(eltype(θ)), zero(eltype(θ)))
+include("structs.jl")
 
 # =============== Utility functions ===============
 function bragg_periodicity(θ)
@@ -43,6 +16,7 @@ function build_xOz_plane(Np, size)
 
     return X, Z
 end
+
 
 function build_sphere_region(R, theta, phi)
     X = R .* sin.(theta) .* cos.(phi)'
@@ -243,7 +217,7 @@ function _compute_field(x, y, z, field::GaussianBeam{<:Real})
     return E
 end
 
-function compute_field(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, field::GaussianBeam{<:Real})
+function compute_field!(out::AbstractGPUArray, x::AbstractGPUArray, y::AbstractGPUArray, z::AbstractGPUArray, field::GaussianBeam{<:Real})
     m = length(x)
     @cuda threads=1024 blocks=cld(m, 1024) _compute_field!(vec(out), vec(x), vec(y), vec(z), field)
 end
@@ -383,15 +357,18 @@ lattice and solves the multiple scattering problem.
    - Accumulate intensity contributions
 2. Average over all iterations and normalize
 """
-function mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z; iterations=100)
+function mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z, iterations=100)
     scatterers = similar(X, params.Na, 3)
     M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
     E = similar(X, Complex{eltype(X)}, params.Na)
     A = similar(X, Complex{eltype(X)}, params.Na)
 
     intensity = zero(X)
-    scatt_intensity = zeros(Complex{eltype(X)}, size(X, 1), size(X, 2))
-    incident_intensity = _compute_field.(X, Y, Z, Ref(incident_field))
+    scatt_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
+    incident_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
+
+    compute_field!(incident_intensity, X, Y, Z, incident_field)
+    incident_intensity .*= convert(eltype(M), 0.5im)
 
     for i in ProgressBar(1:iterations)
         uniform_optical_lattice!(params, scatterers)
@@ -403,17 +380,60 @@ function mean_intensity(params::SimulationParameters, incident_field::GaussianBe
         A .= M \ E
 
         compute_scattered_field!(scatt_intensity, X, Y, Z, scatterers, A)
-        intensity .= abs2.(scatt_intensity + incident_intensity)
+        intensity .+= abs2.(scatt_intensity + incident_intensity)
 
     end
-    intensity ./= iterations * incident_field.E0^2
+    intensity ./= iterations .* incident_field.E0.^2  # Normalize by incident field intensity
 
     return intensity
 end
 
+function reflection_coeff(params::SimulationParameters, incident_field::GaussianBeam, iterations=100)
+    scatterers = zeros(params.Na, 3)
+    M = zeros(Complex{eltype(X)}, params.Na, params.Na)
+    E = zeros(Complex{eltype(X)}, params.Na)
+    A = zeros(Complex{eltype(X)}, params.Na)
+
+    X_inc, Y_inc, Z_inc = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(0, 0, length=5))
+    X_refl, Y_refl, Z_refl = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(π, π, length=5))
+
+    intensity_inc = zero(X_inc)
+    scatt_intensity_inc = zeros(Complex{eltype(X_inc)}, size(X_inc, 1), size(X_inc, 2))
+    beam_intensity_inc = similar(X, Complex{eltype(X_inc)}, size(X_inc, 1), size(X_inc, 2))
+    compute_field!(beam_intensity_inc, X_inc, Y_inc, Z_inc, incident_field)
+
+    intensity_refl = zero(X_refl)
+    scatt_intensity_refl = similar(X, Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
+    beam_intensity_refl = similar(X, Complex{eltype(X_refl)}, size(X_refl, 1), size(X_refl, 2))
+    compute_field!(beam_intensity_refl, X_refl, Y_refl, Z_refl, incident_field)
+
+    R = 0.0
+
+    for i in 1:iterations
+        uniform_optical_lattice!(params, scatterers)
+        compute_system_matrix!(M, scatterers, params.Δ0)
+
+        compute_field!(E, view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), incident_field)
+        E .*= convert(eltype(M), 0.5im)
+
+        A .= M \ E
+
+        compute_scattered_field!(scatt_intensity_inc, X_inc, Y_inc, Z_inc, scatterers, A)
+        intensity_inc .+= abs2.(scatt_intensity_inc + beam_intensity_inc)
+
+        compute_scattered_field!(scatt_intensity_refl, X_refl, Y_refl, Z_refl, scatterers, A)
+        intensity_refl .+= abs2.(scatt_intensity_refl + beam_intensity_refl)
+
+        println("Iteration $i: ", sum(intensity_refl), " / ", sum(intensity_inc))
+        R += sum(intensity_refl) / sum(intensity_inc)
+    end
+
+    return R / iterations
+end
+
 # ================== Main ==================
 # Simulation parameters
-Na  = 1000
+Na  = 300
 Nd  = 20
 Rd  = 9.0
 a   = 0.07
@@ -422,8 +442,8 @@ a   = 0.07
 # Electric field parameters
 E0  = 1e-3
 w0  = 4.0
-θ   = deg2rad(30)
-d   = bragg_periodicity(deg2rad(30))
+θ   = deg2rad(10)
+d   = bragg_periodicity(deg2rad(10))
 
 # Others parameters
 nb_iterations = 10000
@@ -431,14 +451,18 @@ nb_iterations = 10000
 incident_field = GaussianBeam(E0, w0, θ)
 params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
-X, Z = build_xOz_plane(200, 90.0)
+X, Z = build_xOz_plane(100, 90.0)
+X_d = cu(X)
+Z_d = cu(Z)
+Y_d = zero(X_d)
 
-intensity = mean_intensity(params, incident_field, X, 0.0, Z; iterations=50)
+intensity = mean_intensity(params, incident_field, X, 0.0, Z, 3000)
+R = reflection_coeff(params, incident_field, 50)
 
 using Plots
+X_inc, Y_inc, Z_inc = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(0, 0, length=1))
+X_refl, Y_refl, Z_refl = build_sphere_region(45.0, range(deg2rad(169), deg2rad(171), length=5), range(π, π, length=1))
 
-heatmap(log10.(intensity'),
-    title="Mean Scattered Light Intensity",
-    xlabel="X Position",
-    ylabel="Z Position",
-    color=:viridis)
+heatmap(Z[:, 1], X[1, :], log10.(Array(intensity)'), title="Mean intensity distribution", xlabel="Z (m)", ylabel="X (m)", color=:jet, aspect_ratio=:equal)
+scatter!(vec(Z_inc), vec(X_inc), label="Incident point", color=:green, aspect_ratio=:equal)
+scatter!(vec(Z_refl), vec(X_refl), label="Reflection point", color=:blue, aspect_ratio=:equal)

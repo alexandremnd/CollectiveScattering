@@ -7,6 +7,7 @@
 #SBATCH --ntasks-per-core=4
 #SBATCH --mail-user=alexandre.menard1@universite-paris-saclay.fr
 #SBATCH --mail-type=END
+#SBATCH --output=logs/%j.out
 
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
 echo

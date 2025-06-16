@@ -188,10 +188,10 @@ cython_debug/
 *.png
 article.mplstyle
 
-*.csv
+# *.csv
 *.png
 !img/*.png
 *.out
-*.txt
+# *.txt
 .venv/
 *.ipynb

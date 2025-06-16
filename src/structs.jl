@@ -7,12 +7,7 @@ A parametric struct for storing simulation parameters with type constraints.
 - `T <: Real`: Numeric type for real-valued parameters (e.g., Float64, Float32)
 - `N <: Integer`: Integer type for discrete parameters (e.g., Int64, Int32)
 
-# Description
-This struct serves as a container for simulation configuration parameters, ensuring
-type safety by constraining the parameter types to real numbers and integers
-respectively. The parametric design allows for flexibility in precision and
-performance optimization.
-
+# Fields
 - `Na`: Number of atoms
 - `Nd`: Number of disks
 - `Rd`: Radius of the disks
@@ -20,7 +15,7 @@ performance optimization.
 - `d`: Distance between disks
 - `Δ0`: Detuning between the laser frequency and the atomic resonance frequency
 """
-mutable struct SimulationParameters{T <: Real, N <: Integer}
+struct SimulationParameters{T <: Real, N <: Integer}
     Na::N
     Nd::N
     Rd::T
@@ -37,6 +32,8 @@ A structure representing a Gaussian beam with real-valued parameters.
 
 The Gaussian beam is a fundamental solution to the paraxial wave equation and is commonly
 used in optics and laser physics to model the propagation of coherent light beams.
+
+Do not instantiate this type directly; use the provided constructor `GaussianBeam(E0, w0, θ)`.
 """
 struct GaussianBeam{T <: Real}
     E0::T
@@ -55,4 +52,4 @@ struct GaussianBeam{T <: Real}
     u3y::T
     u3z::T
 end
-GaussianBeam(E0, w0, θ) = GaussianBeam(E0, w0, θ, -sin(θ), zero(eltype(θ)), cos(θ), cos(θ), zero(eltype(θ)), sin(θ), zero(eltype(θ)), one(eltype(θ)), zero(eltype(θ)))
+GaussianBeam(E0, w0, θ) = GaussianBeam(E0, w0, θ, -sin(θ), zero(eltype(θ)), -cos(θ), cos(θ), zero(eltype(θ)), -sin(θ), zero(eltype(θ)), one(eltype(θ)), zero(eltype(θ)))

@@ -66,3 +66,41 @@ function save_matrix_to_csv(matrix, filename)
         end
     end
 end
+
+function save_params_to_csv(params::SimulationParameters, incident_field::GaussianBeam, iterations, filename)
+    open(filename, "w") do file
+        println(file, "Na: ", params.Na)
+        println(file, "Nd: ", params.Nd)
+        println(file, "Rd: ", params.Rd)
+        println(file, "a: ", params.a)
+        println(file, "d: ", params.d)
+        println(file, "Δ0: ", params.Δ0)
+        println(file, "E0: ", incident_field.E0)
+        println(file, "w0: ", incident_field.w0)
+        println(file, "θ: ", incident_field.θ)
+        println(file, "Averaged iterations: ", iterations)
+    end
+end
+
+# ========== Backend Computation Device Management ==========
+
+abstract type AbstractBackend end
+
+struct CPUBackend <: AbstractBackend end
+struct GPUBackend <: AbstractBackend end
+
+# Default backend
+const DEFAULT_BACKEND = Ref{AbstractBackend}(CPUBackend())
+
+get_backend() = DEFAULT_BACKEND[]
+get_backend(x::AbstractArray) = CPUBackend()
+get_backend(x::AbstractGPUArray) = GPUBackend()
+set_backend!(backend::AbstractBackend) = (DEFAULT_BACKEND[] = backend)
+
+# Array creation functions
+Base.zeros(::Type{T}, backend::CPUBackend, dims...) where T = zeros(T, dims...)
+Base.zeros(::Type{T}, backend::GPUBackend, dims...) where T = CUDA.zeros(T, dims...)
+
+Base.ones(::Type{T}, backend::CPUBackend, dims...) where T = ones(T, dims...)
+Base.ones(::Type{T}, backend::GPUBackend, dims...) where T = CUDA.ones(T, dims...)
+

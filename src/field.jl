@@ -34,15 +34,15 @@ function _compute_field(x, y, z, field::GaussianBeam{<:Real})
             (field.u3x * x + field.u3y * y + field.u3z * z)^2
 
     zR = π * field.w0^2
-    wZ = field.w0 * sqrt(1f0 + (proj_z / zR)^2)
+    wZ = field.w0 * sqrt(1.0 + (proj_z / zR)^2)
     phase = atan(proj_z / zR)
 
     if proj_z == 0
         return field.E0 * exp(-proj_r2 / field.w0^2)
     end
 
-    Rz = proj_z * (1f0 + (zR / proj_z)^2)
-    E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2f0im * (proj_z + proj_r2 / (2 * Rz)) -1f0im * phase)
+    Rz = proj_z * (1 + (zR / proj_z)^2)
+    E = field.E0 * (field.w0 / wZ) * exp(-proj_r2 / wZ^2) * exp(π * 2.0im * (proj_z + proj_r2 / (2.0 * Rz)) - 1.0im * phase)
 
     return E
 end
@@ -82,6 +82,8 @@ function _compute_field!(out, x, y, z, field)
     end
     return nothing
 end
+
+# ============ Scattered Field Computation ============
 
 """
     compute_scattered_field(x, y, z, scatterers, amplitudes)

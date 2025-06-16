@@ -182,8 +182,8 @@ cython_debug/
 
 # Others
 /Diapo
-/Fig
-/fig
+# /Fig
+# /fig
 /output
 *.png
 article.mplstyle
@@ -195,4 +195,3 @@ article.mplstyle
 *.txt
 .venv/
 *.ipynb
-*.slurm

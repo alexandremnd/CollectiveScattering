@@ -21,7 +21,7 @@ pin_thread()
 println("====================================")
 
 # Simulation parameters
-Na  = 300
+Na  = 1000
 Nd  = 20
 Rd  = 9.0
 a   = 0.07

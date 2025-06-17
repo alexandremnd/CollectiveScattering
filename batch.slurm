@@ -18,8 +18,8 @@ if [[ $NUM_SOCKETS -eq 0 || $PHYSICAL_CORES_PER_SOCKET -eq 0 ]]; then
     TOTAL_CORES=$(nproc)
 fi
 
-export JULIA_NUM_THREADS=$TOTAL_CORES
-export SLURM_JOB_ID=$SLURM_JOB_ID
+# export JULIA_NUM_THREADS=$TOTAL_CORES
+# export SLURM_JOB_ID=$SLURM_JOB_ID
 
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
 echo "Total number of physical cores detected: $TOTAL_CORES"
@@ -30,7 +30,7 @@ julia -t auto src/setup.jl
 echo
 echo
 
-julia -t $TOTAL_CORES src/main.jl
+julia src/main.jl
 
 echo
 echo "Job $SLURM_JOB_ID finished on $(hostname) at $(date)"

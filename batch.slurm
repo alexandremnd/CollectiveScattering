@@ -26,6 +26,10 @@ echo "Total number of physical cores detected: $TOTAL_CORES"
 echo
 
 julia -t auto src/setup.jl
+
+echo
+echo
+
 julia -t $TOTAL_CORES src/main.jl
 
 echo

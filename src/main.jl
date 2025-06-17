@@ -20,8 +20,6 @@ println(Threads.nthreads(), " threads used for Julia operations.")
 pin_thread()
 println("====================================")
 
-exit()
-
 # Simulation parameters
 Na  = 300
 Nd  = 20
@@ -42,10 +40,10 @@ t_span = 0:0.1:1.0  # Time span for dynamic intensity calculation
 θ_span = range(0, 20, length=5)
 ϕ_span = range(0, 2π, length=5)
 X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
-it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 1000000)
+it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 500000)
 
-save_matrix_to_csv(it, "data/DynamicDetuned/intensity.csv")
-save_params(params, incident_field, 5000, "data/DynamicDetuned/parameters.txt")
+save_matrix_to_csv(it, "data/Dynamic/intensity-$(SLURM_JOB_ID).csv")
+save_params(params, incident_field, 500000, "data/Dynamic/parameters-$(SLURM_JOB_ID).txt")
 
 
 

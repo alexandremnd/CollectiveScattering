@@ -12,6 +12,6 @@
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
 echo "Total number of physical cores detected: $TOTAL_CORES"
 
-julia -E "while True; sleep(1); end" &
+julia -E "while true; sleep(1); end"
 
 echo "Job $SLURM_JOB_ID finished on $(hostname) at $(date)"

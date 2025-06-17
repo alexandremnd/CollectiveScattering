@@ -24,7 +24,7 @@ The matrix is symmetric, so only the upper triangular part is computed and then
 mirrored to the lower triangular part for efficiency.
 """
 function compute_system_matrix!(M::AbstractMatrix, scatterers::AbstractMatrix, Δ0::Real)
-    for i in axes(M, 2)
+    @batch for i in axes(M, 2)
         xi = scatterers[i, 1]
         yi = scatterers[i, 2]
         zi = scatterers[i, 3]

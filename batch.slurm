@@ -1,10 +1,9 @@
 #!/bin/bash
 
-#SBATCH -J detuning
+#SBATCH -J det
 #SBATCH -p skylake
 #SBATCH -N 1
-#SBATCH -n 24
-#SBATCH --ntasks-per-core=4
+#SBATCH --ntasks-per-core=2
 #SBATCH --mail-user=alexandre.menard1@universite-paris-saclay.fr
 #SBATCH --mail-type=END
 #SBATCH --output=logs/%j.out
@@ -18,7 +17,7 @@ if [[ $NUM_SOCKETS -eq 0 || $PHYSICAL_CORES_PER_SOCKET -eq 0 ]]; then
     TOTAL_CORES=$(nproc)
 fi
 
-export JULIA_NUM_THREADS=$TOTAL_CORES
+# export JULIA_NUM_THREADS=$TOTAL_CORES
 export SLURM_JOBID=$SLURM_JOB_ID
 
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"

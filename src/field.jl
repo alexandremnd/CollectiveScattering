@@ -105,7 +105,7 @@ amplitude proportional to `amplitudes[i]` and phase determined by the distance f
 scatterer to the observation point.
 """
 function compute_scattered_field!(out, x, y, z, scatterers, amplitudes)
-    @batch for i in axes(out, 2)
+    for i in axes(out, 2)
         for j in axes(out, 1)
             res = zero(eltype(out))
 

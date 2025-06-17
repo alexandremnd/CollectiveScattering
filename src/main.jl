@@ -1,6 +1,6 @@
 using CUDA, GPUArrays
 using Polyester
-import LinearAlgebra.BLAS: get_num_threads
+import LinearAlgebra.BLAS: get_num_threads, set_num_threads
 using BenchmarkTools
 
 include("structs.jl")
@@ -14,10 +14,11 @@ include("misc.jl")
 const SLURM_JOB_ID::String = get(ENV, "SLURM_JOBID", "local")
 
 println("========== Configuration ==========")
+set_num_threads(1)
 println("Slurm JOBID: $(SLURM_JOB_ID)")
 println(get_num_threads(), " threads used for BLAS operations.")
 println(Threads.nthreads(), " threads used for Julia operations.")
-pin_thread()
+# pin_thread()
 println("====================================")
 
 intensity_file = open("data/Dynamic/intensity-$(SLURM_JOB_ID).csv", "w")
@@ -41,11 +42,12 @@ incident_field = GaussianBeam(E0, w0, θ)
 params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
 t_span = 0:0.05:1.0  # Time span for dynamic intensity calculation
-θ_span = range(0, 20, length=5)
+θ_span = range(0, deg2rad(20), length=5)
 ϕ_span = range(0, 2π, length=5)
 X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
-it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 10000)
 
+
+it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 1000)
 save_matrix(intensity_file, it)
 save_matrix(time_file, collect(t_span))
 save_params(parameters_file, params, incident_field, 10000)

@@ -1,0 +1,13 @@
+===== Simulation parameters =====
+Na: 500
+Nd: 20
+Rd: 9.0
+a: 0.07
+d: 0.5773502691896257
+Δ0: 0.0
+===== Incident field parameters =====
+E0: 0.001
+w0: 4.0
+θ: 90.0 degrees
+===== Other parameters =====
+Nb iterations: 1000

@@ -2,7 +2,7 @@ using InteractiveUtils
 import Hwloc: num_physical_cores, num_virtual_cores
 import LinearAlgebra.BLAS: get_num_threads
 
-versioninfo(verbose=true)
+versioninfo()
 
 println("========== Availaible configuration ==========")
 println(num_physical_cores(), " physical cores detected.")

@@ -5,8 +5,8 @@ function pin_thread()
         IN_SLURM = get(ENV, "SLURM_JOBID", "local") != "local"
         ThreadPinning.pinthreads(:cores)
         ThreadPinning.openblas_pinthreads(:cores)
-        ThreadPinning.threadinfo(; slurm=IN_SLURM)
-        ThreadPinning.threadinfo(; blas=true, slurm=IN_SLURM)
+        ThreadPinning.threadinfo(; slurm=IN_SLURM, color=false)
+        ThreadPinning.threadinfo(; blas=true, slurm=IN_SLURM, color=false)
     end
 end
 

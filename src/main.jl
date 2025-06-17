@@ -1,7 +1,5 @@
 using CUDA, GPUArrays
 using Polyester
-using BenchmarkTools
-using ProgressBars
 import LinearAlgebra.BLAS: get_num_threads
 
 include("structs.jl")
@@ -10,6 +8,8 @@ include("lattice.jl")
 include("field.jl")
 include("computation.jl")
 include("averaging.jl")
+include("misc.jl")
+include("backend_array.jl")
 
 const SLURM_JOB_ID::String = get(ENV, "SLURM_JOB_ID", "local")
 

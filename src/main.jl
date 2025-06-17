@@ -2,8 +2,8 @@ using CUDA, GPUArrays
 using Polyester
 using BenchmarkTools
 using ProgressBars
+import LinearAlgebra.BLAS: get_num_threads
 
-# DO NOT execute if using the REPL, instantiate each function manually
 include("structs.jl")
 include("utils.jl")
 include("lattice.jl")
@@ -11,15 +11,16 @@ include("field.jl")
 include("computation.jl")
 include("averaging.jl")
 
-# ================== Main ==================
-# Get the first command line argument
-if length(ARGS) >= 1
-    first_arg = ARGS[1]
-    println("Slurm JOBID: $first_arg")
-else
-    println("No Slurm JOBID provided")
-    first_arg = "none"
-end
+const SLURM_JOB_ID::String = get(ENV, "SLURM_JOB_ID", "local")
+
+println("========== Configuration ==========")
+println("Slurm JOBID: $(SLURM_JOB_ID)")
+println(BLAS.get_num_threads(), " threads used for BLAS operations.")
+println(Threads.nthreads(), " threads used for Julia operations.")
+pin_thread()
+println("====================================")
+
+exit()
 
 # Simulation parameters
 Na  = 300

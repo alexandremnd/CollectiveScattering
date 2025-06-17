@@ -15,7 +15,8 @@ echo
 julia -t auto src/main_print.jl
 
 echo "Running main simulation with job ID $SLURM_JOB_ID"
-julia -t auto src/main.jl $SLURM_JOB_ID
+export SLURM_JOB_ID $SLURM_JOB_ID
+julia src/main.jl
 
 echo
 echo "Job $SLURM_JOB_ID finished on $(hostname) at $(date)"

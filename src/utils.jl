@@ -1,4 +1,13 @@
+using ThreadPinning
 
+function pin_thread()
+    if Sys.islinux()
+        ThreadPinning.pinthreads(:cores)
+        ThreadPinning.openblas_pinthreads(:cores)
+        ThreadPinning.threadinfo()
+        ThreadPinning.threadinfo(; blas=true)
+    end
+end
 
 """
     bragg_periodicity(θ)

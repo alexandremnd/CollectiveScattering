@@ -1,5 +1,5 @@
 using DifferentialEquations
-import LinearAlgebra: mul!
+import LinearAlgebra: mul!, diagind
 using ProgressBars
 
 """
@@ -109,8 +109,9 @@ function dynamic_intensity(params::SimulationParameters, incident_field::Gaussia
 
         compute_field!(E, view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), incident_field)
         E .*= convert(eltype(M), 0.5im)
-
         A .= M \ E
+
+        M[diagind(M)] .-= 1.0im .* params.Δ0  # Remove detuning from diagonal (driving beam is off in dynamic case)
 
         problem = ODEProblem(f, A, (t_span[begin], t_span[end]), M)
         sol = solve(problem, Tsit5())

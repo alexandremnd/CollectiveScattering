@@ -9,14 +9,21 @@
 #SBATCH --mail-type=END
 #SBATCH --output=logs/%j.out
 
+NUM_SOCKETS = $(egrep '^physical id' /proc/cpuinfo | sort -u | wc -l)
+PHYSICAL_CORES_PER_SOCKET = $(egrep '^core id' /proc/cpuinfo | sort -u | wc -l)
+TOTAL_CORES = $((NUM_SOCKETS * PHYSICAL_CORES_PER_SOCKET))
+
+if [[ $NUM_SOCKETS -eq 0 || $PHYSICAL_CORES_PER_SOCKET -eq 0 ]]; then
+    echo "Error: Unable to determine the number of sockets or physical cores."
+    TOTAL_CORES = $(nproc)
+fi
+
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
+echo "Total number of physical cores detected: $TOTAL_CORES"
 echo
 
-julia -t auto src/main_print.jl
-
-echo "Running main simulation with job ID $SLURM_JOB_ID"
-export SLURM_JOB_ID $SLURM_JOB_ID
-julia src/main.jl
+julia -t auto src/setup.jl
+julia -t $TOTAL_CORES src/main.jl
 
 echo
 echo "Job $SLURM_JOB_ID finished on $(hostname) at $(date)"

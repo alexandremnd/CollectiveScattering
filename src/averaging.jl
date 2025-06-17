@@ -1,5 +1,6 @@
 using DifferentialEquations
-using LinearAlgebra
+import LinearAlgebra: mul!
+using ProgressBars
 
 """
     mean_intensity(params::SimulationParameters{P, N}, incident_field::GaussianBeam{P}, X, Y, Z; iterations=100) where {P <: Real, N <: Integer}

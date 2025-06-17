@@ -15,12 +15,10 @@ const SLURM_JOB_ID::String = get(ENV, "SLURM_JOB_ID", "local")
 
 println("========== Configuration ==========")
 println("Slurm JOBID: $(SLURM_JOB_ID)")
-println(BLAS.get_num_threads(), " threads used for BLAS operations.")
+println(get_num_threads(), " threads used for BLAS operations.")
 println(Threads.nthreads(), " threads used for Julia operations.")
 pin_thread()
 println("====================================")
-
-exit()
 
 # Simulation parameters
 Na  = 300
@@ -38,14 +36,14 @@ d   = bragg_periodicity(deg2rad(10))
 incident_field = GaussianBeam(E0, w0, θ)
 params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
-t_span = 0:0.01:1.0  # Time span for dynamic intensity calculation
+t_span = 0:0.1:1.0  # Time span for dynamic intensity calculation
 θ_span = range(0, 20, length=5)
 ϕ_span = range(0, 2π, length=5)
 X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
 it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 1000000)
 
 save_matrix_to_csv(it, "data/DynamicDetuned/intensity.csv")
-save_params(params, incident_field, 1000000, "data/DynamicDetuned/parameters.txt")
+save_params(params, incident_field, 5000, "data/DynamicDetuned/parameters.txt")
 
 
 

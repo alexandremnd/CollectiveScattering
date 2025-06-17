@@ -20,6 +20,8 @@ println(Threads.nthreads(), " threads used for Julia operations.")
 pin_thread()
 println("====================================")
 
+exit()
+
 # Simulation parameters
 Na  = 300
 Nd  = 20

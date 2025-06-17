@@ -14,12 +14,12 @@ include("backend_array.jl")
 const SLURM_JOB_ID::String = get(ENV, "SLURM_JOBID", "local")
 
 println("========== Configuration ==========")
-println("Slurm JOBID: $(SLURM_JOB_ID)")
+println("Slurm JOBID: $(!SLURM_JOB_ID)")
 println(get_num_threads(), " threads used for BLAS operations.")
 println(Threads.nthreads(), " threads used for Julia operations.")
 pin_thread()
 println("====================================")
-
+sleep()
 # Simulation parameters
 Na  = 1000
 Nd  = 20

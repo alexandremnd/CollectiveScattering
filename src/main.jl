@@ -11,7 +11,7 @@ include("averaging.jl")
 include("misc.jl")
 include("backend_array.jl")
 
-const SLURM_JOB_ID::String = get(ENV, "SLURM_JOB_ID", "local")
+const SLURM_JOB_ID::String = get(ENV, "SLURM_JOBID", "local")
 
 println("========== Configuration ==========")
 println("Slurm JOBID: $(SLURM_JOB_ID)")

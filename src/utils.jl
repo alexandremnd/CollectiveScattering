@@ -2,10 +2,11 @@ using ThreadPinning
 
 function pin_thread()
     if Sys.islinux()
+        IN_SLURM = get(ENV, "SLURM_JOBID", "local") != "local"
         ThreadPinning.pinthreads(:cores)
         ThreadPinning.openblas_pinthreads(:cores)
-        ThreadPinning.threadinfo()
-        ThreadPinning.threadinfo(; blas=true)
+        ThreadPinning.threadinfo(; slurm=IN_SLURM)
+        ThreadPinning.threadinfo(; blas=true, slurm=IN_SLURM)
     end
 end
 

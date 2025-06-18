@@ -2,10 +2,11 @@ using Distributed
 using CUDA, GPUArrays
 using Polyester
 import LinearAlgebra.BLAS: get_num_threads, set_num_threads
+using ThreadPinning
 
 # Add worker processes if not already done
 if nprocs() == 1
-    addprocs(8)  # Adjust number based on your CPU cores
+    addprocs(28)  # Adjust number based on your CPU cores
 end
 
 # Load required modules on all workers
@@ -28,9 +29,9 @@ end
     SLURM_JOB_ID::String = get(ENV, "SLURM_JOBID", "local")
 
     # Create unique file names for each run
-    intensity_file = open("data/Dynamic/intensity-$(SLURM_JOB_ID)-run$(run_id).csv", "w")
-    parameters_file = open("data/Dynamic/parameters-$(SLURM_JOB_ID)-run$(run_id).txt", "w")
-    time_file = open("data/Dynamic/time-$(SLURM_JOB_ID)-run$(run_id).txt", "w")
+    intensity_file = open("data/test/intensity-$(SLURM_JOB_ID)-run$(run_id).csv", "w")
+    parameters_file = open("data/test/parameters-$(SLURM_JOB_ID)-run$(run_id).txt", "w")
+    time_file = open("data/test/time-$(SLURM_JOB_ID)-run$(run_id).txt", "w")
 
     try
         set_num_threads(1)
@@ -57,7 +58,7 @@ end
         X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
 
         # Run simulation
-        it = dynamic_intensity(params, incident_field, t_span, X, Y, Z, 1000)
+        it = compute_dynamic_intensity(params, incident_field, t_span, X, Y, Z, 1000)
 
         # Save results
         save_matrix(intensity_file, it)
@@ -76,12 +77,14 @@ end
 
 # Main execution
 function main()
+
     println("========== Parallel Configuration ==========")
     println("Number of processes: $(nprocs())")
     println("Number of workers: $(nworkers())")
     println("==========================================")
 
-    N = 6  # Number of parallel runs - adjust as needed
+    N = 1  # Number of parallel runs - adjust as needed
+    ThreadPinning.distributed_pinthreads(:numa)
 
     # Run N simulations in parallel
     println("Starting $N parallel simulations...")

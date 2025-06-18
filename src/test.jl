@@ -1,7 +1,3 @@
-using CUDA, GPUArrays
-using Polyester
-using BenchmarkTools
-
 include("structs.jl")
 include("utils.jl")
 include("lattice.jl")

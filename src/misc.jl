@@ -30,8 +30,9 @@ First dimension is X varying, second dimension is Z varying.
 function build_xOz_plane(Np, size)
     X = range(-size/2, size/2, length=Np)' .* ones(Np)
     Z = ones(Np)' .* range(-size/2, size/2, length=Np)
+    Y = zero(X)
 
-    return X, Z
+    return X, Y, Z
 end
 
 

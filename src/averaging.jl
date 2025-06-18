@@ -30,7 +30,7 @@ lattice and solves the multiple scattering problem.
    - Accumulate intensity contributions
 2. Average over all iterations and normalize
 """
-function mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z, iterations=100)
+function compute_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z, iterations=100)
     scatterers = similar(X, params.Na, 3)
     M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
     E = similar(X, Complex{eltype(X)}, params.Na)
@@ -89,7 +89,7 @@ This function computes the time-dependent intensity of light scattered by partic
 volume. The calculation is performed over the specified spatial grid (X, Y, Z) and time span,
 with averaging performed over the specified number of iterations to improve statistical accuracy.
 """
-function dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, X, Y, Z, iterations=100)
+function compute_dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, X, Y, Z, iterations=100)
     scatterers = similar(X, params.Na, 3)
     M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
     E = similar(X, Complex{eltype(X)}, params.Na)

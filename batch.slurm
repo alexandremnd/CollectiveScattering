@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -J det
+#SBATCH -J Δ-2-6
 #SBATCH -p skylake
 #SBATCH -N 1
 #SBATCH --ntasks-per-core=2
@@ -17,7 +17,7 @@ if [[ $NUM_SOCKETS -eq 0 || $PHYSICAL_CORES_PER_SOCKET -eq 0 ]]; then
     TOTAL_CORES=$(nproc)
 fi
 
-# export JULIA_NUM_THREADS=$TOTAL_CORES
+export JULIA_NUM_THREADS=$TOTAL_CORES
 export SLURM_JOBID=$SLURM_JOB_ID
 
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"

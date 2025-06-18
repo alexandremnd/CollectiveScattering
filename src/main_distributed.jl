@@ -36,7 +36,7 @@ end
         set_num_threads(1)
 
         # Simulation parameters
-        Na  = 300
+        Na  = 1000
         Nd  = 20
         Rd  = 9.0
         a   = 0.07
@@ -81,7 +81,7 @@ function main()
     println("Number of workers: $(nworkers())")
     println("==========================================")
 
-    N = 1  # Number of parallel runs - adjust as needed
+    N = 6  # Number of parallel runs - adjust as needed
 
     # Run N simulations in parallel
     println("Starting $N parallel simulations...")

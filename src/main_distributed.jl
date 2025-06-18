@@ -1,6 +1,4 @@
 using Distributed
-using CUDA, GPUArrays
-using Polyester
 import LinearAlgebra.BLAS: get_num_threads, set_num_threads
 using ThreadPinning
 

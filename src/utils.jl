@@ -10,6 +10,21 @@ function pin_thread()
     end
 end
 
+function filename(name::String)
+    SLURM_JOB_ID = get(ENV, "SLURM_JOB_ID", "local")
+    SLURM_ARRAY_TASK_ID = get(ENV, "SLURM_ARRAY_TASK_ID", "0")
+
+    if SLURM_JOB_ID == "local"
+        return "$(name).txt"
+    end
+
+    if SLURM_ARRAY_TASK_ID == "0"
+        return "$(name)-$(SLURM_JOB_ID).txt"
+    end
+
+    return "$(name)-$(SLURM_JOB_ID)-$(SLURM_ARRAY_TASK_ID).txt"
+end
+
 function save_matrix(file, matrix)
     for row in eachrow(matrix)
         println(file, join(row, ","))

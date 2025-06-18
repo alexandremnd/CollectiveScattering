@@ -1,6 +1,6 @@
-using DifferentialEquations
+using OrdinaryDiffEq
 import LinearAlgebra: mul!, diagind
-using ProgressBars
+using Distributed
 
 """
     mean_intensity(params::SimulationParameters{P, N}, incident_field::GaussianBeam{P}, X, Y, Z; iterations=100) where {P <: Real, N <: Integer}
@@ -31,19 +31,19 @@ lattice and solves the multiple scattering problem.
 2. Average over all iterations and normalize
 """
 function compute_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, X, Y, Z, iterations=100)
-    scatterers = similar(X, params.Na, 3)
-    M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
-    E = similar(X, Complex{eltype(X)}, params.Na)
-    A = similar(X, Complex{eltype(X)}, params.Na)
+    scatterers = zeros(params.Na, 3)
+    M = zeros(ComplexF64, params.Na, params.Na)
+    E = zeros(ComplexF64, params.Na)
+    A = zeros(ComplexF64, params.Na)
 
     intensity = zero(X)
-    scatt_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
-    incident_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
+    scatt_intensity = zeros(ComplexF64, size(X))
+    incident_intensity = zeros(ComplexF64, size(X))
 
     compute_field!(incident_intensity, X, Y, Z, incident_field)
     incident_intensity .*= convert(eltype(M), 0.5im)
 
-    for i in ProgressBar(1:iterations)
+    for i in 1:iterations
         uniform_optical_lattice!(params, scatterers)
         compute_system_matrix!(M, scatterers, params.Δ0)
 
@@ -90,20 +90,20 @@ volume. The calculation is performed over the specified spatial grid (X, Y, Z) a
 with averaging performed over the specified number of iterations to improve statistical accuracy.
 """
 function compute_dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, X, Y, Z, iterations=100)
-    scatterers = similar(X, params.Na, 3)
-    M = similar(X, Complex{eltype(X)}, params.Na, params.Na)
-    E = similar(X, Complex{eltype(X)}, params.Na)
-    A = similar(X, Complex{eltype(X)}, params.Na)
+    scatterers = zeros(params.Na, 3)
+    M = zeros(ComplexF64, params.Na, params.Na)
+    E = zeros(ComplexF64, params.Na)
+    A = zeros(ComplexF64, params.Na)
 
     intensity_t = zeros(size(X, 1), length(t_span))
     intensity = zero(X)
-    scatt_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
-    incident_intensity = similar(X, Complex{eltype(X)}, size(X, 1), size(X, 2))
+    scatt_intensity = zeros(ComplexF64, size(X))
+    incident_intensity = zeros(ComplexF64, size(X))
 
     compute_field!(incident_intensity, X, Y, Z, incident_field)
     incident_intensity .*= convert(eltype(M), 0.5im)
 
-    for i in ProgressBar(1:iterations)
+    for i in 1:iterations
         uniform_optical_lattice!(params, scatterers)
         compute_system_matrix!(M, scatterers, params.Δ0)
 
@@ -121,7 +121,7 @@ function compute_dynamic_intensity(params::SimulationParameters, incident_field:
             A .= sol(t)
             compute_scattered_field!(scatt_intensity, X, Y, Z, scatterers, A)
             intensity .= abs2.(scatt_intensity .+ incident_intensity)
-            intensity_t[:, k] .+= sum(Array(intensity), dims=2) / size(intensity, 2)
+            intensity_t[:, k] .+= sum(intensity, dims=2) / size(intensity, 2)
             k += 1
         end
 
@@ -129,4 +129,53 @@ function compute_dynamic_intensity(params::SimulationParameters, incident_field:
     intensity_t ./= intensity_t[:, 1]
 
     return intensity_t
+end
+
+function plane_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, iterations=100, folder="data/default/")
+
+    mkpath(folder)
+    x_f = open(joinpath(folder, filename("X")), "w")
+    y_f = open(joinpath(folder, filename("Y")), "w")
+    z_f = open(joinpath(folder, filename("Z")), "w")
+    i_f = open(joinpath(folder, filename("intensity")), "w")
+    p_f = open(joinpath(folder, filename("parameters")), "w")
+
+
+    N_PROCS = get(ENV, "SLURM_NPROCS", "1") |> parse(Int)
+    result_intensity = @distributed (+) for i in 1:N_PROCS
+        X, Y, Z = build_xOz_plane(200, 90.0)
+        compute_mean_intensity(params, incident_field, X, Y, Z, cld(iterations, N_PROCS))
+    end
+
+    result_intensity ./= N_PROCS
+
+    save_params(p_f, params, incident_field, iterations)
+    save_matrix(x_f, X)
+    save_matrix(y_f, zero(X))
+    save_matrix(z_f, Z)
+    save_matrix(i_f, result_intensity)
+end
+
+function reflection_coefficient(params::SimulationParameters, incident_field::GaussianBeam, Δ0_span, iterations=100, folder="data/default/")
+    mkpath(folder)
+    Δ_f = open(joinpath(folder, filename("delta")), "w")
+    r_f = open(joinpath(folder, filename("intensity")), "w")
+    p_f = open(joinpath(folder, filename("parameters")), "w")
+
+    θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
+    ϕ_span = range(0, π, length=2)
+    X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
+
+    R = zeros(length(Δ0_span))
+    for i in axes(Δ0_span, 1)
+        current_params = SimulationParameters(params.Na, params.Nd, params.Rd, params.a, params.d, Δ0_span[i])
+        intensity = compute_mean_intensity(current_params, incident_field, X, Y, Z, iterations)
+
+        res = sum(intensity, dims=1)
+        R[i] = res[2] / res[1]
+    end
+
+    save_params(p_f, params, incident_field, iterations)
+    save_matrix(Δ_f, collect(Δ0_span))
+    save_matrix(r_f, R)
 end

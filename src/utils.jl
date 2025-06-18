@@ -1,4 +1,5 @@
 using ThreadPinning
+using DelimitedFiles
 
 function pin_thread()
     if Sys.islinux()
@@ -12,6 +13,7 @@ end
 
 function filename(name::String)
     SLURM_JOB_ID = get(ENV, "SLURM_JOB_ID", "local")
+    SLURM_ARRAY_JOB_ID = get(ENV, "SLURM_ARRAY_JOB_ID", "0")
     SLURM_ARRAY_TASK_ID = get(ENV, "SLURM_ARRAY_TASK_ID", "0")
 
     if SLURM_JOB_ID == "local"
@@ -22,7 +24,7 @@ function filename(name::String)
         return "$(name)-$(SLURM_JOB_ID).txt"
     end
 
-    return "$(name)-$(SLURM_JOB_ID)-$(SLURM_ARRAY_TASK_ID).txt"
+    return "$(name)-$(SLURM_ARRAY_JOB_ID)-$(SLURM_ARRAY_TASK_ID).txt"
 end
 
 function save_matrix(file, matrix)
@@ -30,6 +32,13 @@ function save_matrix(file, matrix)
         println(file, join(row, ","))
     end
     close(file)
+end
+
+function load_matrix(filename)
+    file = open(filename, "r")
+    data = readdlm(file, ',')
+    close(file)
+    return data
 end
 
 function save_params(file, params::SimulationParameters, incident_field::GaussianBeam, iterations)

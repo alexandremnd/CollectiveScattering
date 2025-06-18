@@ -131,8 +131,29 @@ function compute_dynamic_intensity(params::SimulationParameters, incident_field:
     return intensity_t
 end
 
-function plane_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, iterations=100, folder="data/default/")
+"""
+    plane_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, iterations=100, folder="data/default/")
 
+Calculate the mean intensity distribution in a plane by averaging over multiple simulation iterations.
+
+# Arguments
+- `params::SimulationParameters`: Simulation configuration parameters
+- `incident_field::GaussianBeam`: The incident Gaussian beam field
+- `iterations::Integer=100`: Number of iterations to average over (default: 100)
+- `folder::String="data/default/"`: Directory path for data storage (default: "data/default/"), directory will be created if it does not exist.
+
+# Returns
+- Mean intensity distribution in the specified plane
+
+# Description
+This function performs Monte Carlo averaging by running multiple scattering simulations
+and computing the ensemble average of the intensity distribution. The averaging helps
+reduce statistical noise and provides a more accurate representation of the mean
+scattered field intensity. If Julia is launched with multiple threads, the averaging
+is performed in parallel across the available threads (consider pinning threads to benefit from NUMA architecture).
+"""
+function plane_mean_intensity(params::SimulationParameters, incident_field::GaussianBeam, iterations=100, folder="data/default/")
+    JOB_ID = get(ENV, "SLURM_JOB_ID", "local")
     mkpath(folder)
     x_f = open(joinpath(folder, filename("X")), "w")
     y_f = open(joinpath(folder, filename("Y")), "w")
@@ -140,14 +161,24 @@ function plane_mean_intensity(params::SimulationParameters, incident_field::Gaus
     i_f = open(joinpath(folder, filename("intensity")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
 
+    result_intensity = zeros(Float64, 200, 200)
 
-    N_PROCS = get(ENV, "SLURM_NPROCS", "1") |> parse(Int)
-    result_intensity = @distributed (+) for i in 1:N_PROCS
+    Threads.@threads for i in 1:Threads.nthreads()
+        tmp_i = open(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")), "w")
         X, Y, Z = build_xOz_plane(200, 90.0)
-        compute_mean_intensity(params, incident_field, X, Y, Z, cld(iterations, N_PROCS))
+        res = compute_mean_intensity(params, incident_field, X, Y, Z, cld(iterations, Threads.nthreads()))
+
+        save_matrix(tmp_i, res)
     end
 
-    result_intensity ./= N_PROCS
+    # Combine results from all threads
+    for i in 1:Threads.nthreads()
+        res = load_matrix(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")))
+        result_intensity .+= res
+    end
+    result_intensity ./= Threads.nthreads()
+
+    X, Y, Z = build_xOz_plane(200, 90.0)
 
     save_params(p_f, params, incident_field, iterations)
     save_matrix(x_f, X)
@@ -156,18 +187,38 @@ function plane_mean_intensity(params::SimulationParameters, incident_field::Gaus
     save_matrix(i_f, result_intensity)
 end
 
+
+"""
+    reflection_coefficient(params::SimulationParameters, incident_field::GaussianBeam, Δ0_span, iterations=100, folder="data/default/")
+
+Calculate the reflection coefficient for collective scattering.
+
+# Arguments
+- `params::SimulationParameters`: Simulation parameters containing system configuration
+- `incident_field::GaussianBeam`: The incident Gaussian beam field
+- `Δ0_span`: Range or array of detuning values to analyze
+- `iterations::Int=100`: Number of iterations for the calculation (default: 100)
+- `folder::String="data/default/"`: Directory path for storing output data (default: "data/default/")
+
+# Returns
+The reflection coefficient as a function of the detuning parameters.
+
+# Description
+This function computes the reflection coefficient for different detuning (Δ0). If Julia is launched with multiple threads, the averaging
+is performed in parallel across the available threads (consider pinning threads to benefit from NUMA architecture).
+"""
 function reflection_coefficient(params::SimulationParameters, incident_field::GaussianBeam, Δ0_span, iterations=100, folder="data/default/")
     mkpath(folder)
     Δ_f = open(joinpath(folder, filename("delta")), "w")
     r_f = open(joinpath(folder, filename("intensity")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
 
-    θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
-    ϕ_span = range(0, π, length=2)
-    X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
-
     R = zeros(length(Δ0_span))
-    for i in axes(Δ0_span, 1)
+    Threads.@threads for i in axes(Δ0_span, 1)
+        θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
+        ϕ_span = range(0, π, length=2)
+        X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
+
         current_params = SimulationParameters(params.Na, params.Nd, params.Rd, params.a, params.d, Δ0_span[i])
         intensity = compute_mean_intensity(current_params, incident_field, X, Y, Z, iterations)
 
@@ -178,4 +229,19 @@ function reflection_coefficient(params::SimulationParameters, incident_field::Ga
     save_params(p_f, params, incident_field, iterations)
     save_matrix(Δ_f, collect(Δ0_span))
     save_matrix(r_f, R)
+end
+
+
+function dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, iterations=100, folder="data/default/")
+    mkpath(folder)
+    t_f = open(joinpath(folder, filename("time")), "w")
+    i_f = open(joinpath(folder, filename("intensity")), "w")
+    p_f = open(joinpath(folder, filename("parameters")), "w")
+
+    X, Y, Z = build_xOz_plane(200, 90.0)
+    intensity_t = compute_dynamic_intensity(params, incident_field, t_span, X, Y, Z, iterations)
+
+    save_params(p_f, params, incident_field, iterations)
+    save_matrix(t_f, t_span)
+    save_matrix(i_f, intensity_t)
 end

@@ -53,7 +53,7 @@ function compute_mean_intensity(params::SimulationParameters, incident_field::Ga
         A .= M \ E
 
         compute_scattered_field!(scatt_intensity, X, Y, Z, scatterers, A)
-        intensity .+= abs2.(scatt_intensity + incident_intensity)
+        intensity .+= abs2.(scatt_intensity .+ incident_intensity)
 
     end
     intensity ./= iterations .* incident_field.E0.^2  # Normalize by incident field intensity
@@ -126,7 +126,6 @@ function compute_dynamic_intensity(params::SimulationParameters, incident_field:
         end
 
     end
-    intensity_t ./= intensity_t[:, 1]
 
     return intensity_t
 end
@@ -174,9 +173,8 @@ function plane_mean_intensity(params::SimulationParameters, incident_field::Gaus
     # Combine results from all threads
     for i in 1:Threads.nthreads()
         res = load_matrix(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")))
-        result_intensity .+= res
+        result_intensity .+= res ./ Threads.nthreads()
     end
-    result_intensity ./= Threads.nthreads()
 
     X, Y, Z = build_xOz_plane(200, 90.0)
 
@@ -210,20 +208,29 @@ is performed in parallel across the available threads (consider pinning threads 
 function reflection_coefficient(params::SimulationParameters, incident_field::GaussianBeam, Δ0_span, iterations=100, folder="data/default/")
     mkpath(folder)
     Δ_f = open(joinpath(folder, filename("delta")), "w")
-    r_f = open(joinpath(folder, filename("intensity")), "w")
+    r_f = open(joinpath(folder, filename("reflection")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
 
     R = zeros(length(Δ0_span))
-    Threads.@threads for i in axes(Δ0_span, 1)
-        θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
-        ϕ_span = range(0, π, length=2)
-        X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
+    for i in axes(Δ0_span, 1)
+        incident_intensity = Threads.Atomic{Float64}(0.0)
+        reflected_intensity = Threads.Atomic{Float64}(0.0)
 
-        current_params = SimulationParameters(params.Na, params.Nd, params.Rd, params.a, params.d, Δ0_span[i])
-        intensity = compute_mean_intensity(current_params, incident_field, X, Y, Z, iterations)
+        # Certainly ensure the best scalability than threading Δ0_span since we don't always want to compute as much R(Δ0) as threads
+        Threads.@threads for j in 1:Threads.nthreads()
+            θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
+            ϕ_span = range(0, π, length=2)
+            X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
 
-        res = sum(intensity, dims=1)
-        R[i] = res[2] / res[1]
+            current_params = SimulationParameters(params.Na, params.Nd, params.Rd, params.a, params.d, Δ0_span[i])
+            intensity = compute_mean_intensity(current_params, incident_field, X, Y, Z, cld(iterations, Threads.nthreads()))
+
+            res = sum(intensity, dims=1)
+            Threads.atomic_add!(incident_intensity, res[1])  # Assuming res[1] is the incident intensity and res[2] is the scattered intensity
+            Threads.atomic_add!(reflected_intensity, res[2])
+        end
+
+        R[i] = reflected_intensity[] / incident_intensity[]
     end
 
     save_params(p_f, params, incident_field, iterations)
@@ -233,13 +240,27 @@ end
 
 
 function dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, iterations=100, folder="data/default/")
+    JOB_ID = get(ENV, "SLURM_JOB_ID", "local")
     mkpath(folder)
     t_f = open(joinpath(folder, filename("time")), "w")
     i_f = open(joinpath(folder, filename("intensity")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
 
-    X, Y, Z = build_xOz_plane(200, 90.0)
-    intensity_t = compute_dynamic_intensity(params, incident_field, t_span, X, Y, Z, iterations)
+    Threads.@threads for i in 1:Threads.nthreads()
+        tmp_i = open(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")), "w")
+        X, Y, Z = build_xOz_plane(200, 90.0)
+        res = compute_dynamic_intensity(params, incident_field, t_span, X, Y, Z, cld(iterations, Threads.nthreads()))
+
+        save_matrix(tmp_i, res)
+    end
+
+    # Combine results from all threads (we could use a more efficient way to do this such as using a thread lock,
+    # but as this is not the longest operation, we can afford to do it this way)
+    intensity_t = zeros(size(res))
+    for i in 1:Threads.nthreads()
+        res = load_matrix(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")))
+        intensity_t .+= res ./ Threads.nthreads()
+    end
 
     save_params(p_f, params, incident_field, iterations)
     save_matrix(t_f, t_span)

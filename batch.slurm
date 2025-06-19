@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -J Δ-dist
+#SBATCH -J Δ-1000
 #SBATCH -p skylake
 #SBATCH -N 1
 #SBATCH -n 28
@@ -22,7 +22,6 @@ export JULIA_NUM_THREADS=$TOTAL_CORES
 
 echo "Job $SLURM_JOB_ID beginned on $(hostname) at $(date)"
 echo "Total number of physical cores detected: $TOTAL_CORES"
-
 
 julia src/main.jl
 

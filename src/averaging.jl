@@ -1,5 +1,5 @@
 using OrdinaryDiffEq
-import LinearAlgebra: mul!, diagind
+import LinearAlgebra: mul!, diagind, LAPACK
 using Distributed
 
 """
@@ -50,7 +50,7 @@ function compute_mean_intensity(params::SimulationParameters, incident_field::Ga
         compute_field!(E, view(scatterers, :, 1), view(scatterers, :, 2), view(scatterers, :, 3), incident_field)
         E .*= convert(eltype(M), 0.5im)
 
-        A .= M \ E
+        A = M \ E
 
         compute_scattered_field!(scatt_intensity, X, Y, Z, scatterers, A)
         intensity .+= abs2.(scatt_intensity .+ incident_intensity)
@@ -88,6 +88,9 @@ The calculated dynamic intensity values over the specified time span and spatial
 This function computes the time-dependent intensity of light scattered by particles in the simulation
 volume. The calculation is performed over the specified spatial grid (X, Y, Z) and time span,
 with averaging performed over the specified number of iterations to improve statistical accuracy.
+
+# Warning
+Intensity is not normalized at all to easen parallelization, do no forget to normalize it afterwards if needed.
 """
 function compute_dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, X, Y, Z, iterations=100)
     scatterers = zeros(params.Na, 3)
@@ -160,9 +163,8 @@ function plane_mean_intensity(params::SimulationParameters, incident_field::Gaus
     i_f = open(joinpath(folder, filename("intensity")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
 
-    result_intensity = zeros(Float64, 200, 200)
 
-    Threads.@threads for i in 1:Threads.nthreads()
+    Threads.@threads :static for i in 1:Threads.nthreads()
         tmp_i = open(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")), "w")
         X, Y, Z = build_xOz_plane(200, 90.0)
         res = compute_mean_intensity(params, incident_field, X, Y, Z, cld(iterations, Threads.nthreads()))
@@ -171,6 +173,7 @@ function plane_mean_intensity(params::SimulationParameters, incident_field::Gaus
     end
 
     # Combine results from all threads
+    result_intensity = zeros(Float64, 200, 200)
     for i in 1:Threads.nthreads()
         res = load_matrix(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")))
         result_intensity .+= res ./ Threads.nthreads()
@@ -217,7 +220,7 @@ function reflection_coefficient(params::SimulationParameters, incident_field::Ga
         reflected_intensity = Threads.Atomic{Float64}(0.0)
 
         # Certainly ensure the best scalability than threading Δ0_span since we don't always want to compute as much R(Δ0) as threads
-        Threads.@threads for j in 1:Threads.nthreads()
+        Threads.@threads :static for j in 1:Threads.nthreads()
             θ_span = range(incident_field.θ - deg2rad(1), incident_field.θ + deg2rad(1), length=5)
             ϕ_span = range(0, π, length=2)
             X, Y, Z = build_sphere_region(45.0, θ_span, ϕ_span)
@@ -239,16 +242,17 @@ function reflection_coefficient(params::SimulationParameters, incident_field::Ga
 end
 
 
-function dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, iterations=100, folder="data/default/")
+function dynamic_intensity(params::SimulationParameters, incident_field::GaussianBeam, t_span, radius, θ_span, ϕ_span, iterations=100, folder="data/default/")
     JOB_ID = get(ENV, "SLURM_JOB_ID", "local")
     mkpath(folder)
     t_f = open(joinpath(folder, filename("time")), "w")
     i_f = open(joinpath(folder, filename("intensity")), "w")
     p_f = open(joinpath(folder, filename("parameters")), "w")
+    θ_f = open(joinpath(folder, filename("theta")), "w")
 
     Threads.@threads for i in 1:Threads.nthreads()
         tmp_i = open(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")), "w")
-        X, Y, Z = build_xOz_plane(200, 90.0)
+        X, Y, Z = build_sphere_region(radius, θ_span, ϕ_span)
         res = compute_dynamic_intensity(params, incident_field, t_span, X, Y, Z, cld(iterations, Threads.nthreads()))
 
         save_matrix(tmp_i, res)
@@ -256,13 +260,16 @@ function dynamic_intensity(params::SimulationParameters, incident_field::Gaussia
 
     # Combine results from all threads (we could use a more efficient way to do this such as using a thread lock,
     # but as this is not the longest operation, we can afford to do it this way)
-    intensity_t = zeros(size(res))
+    intensity_t = zeros(Float64, length(θ_span), length(t_span))
     for i in 1:Threads.nthreads()
         res = load_matrix(joinpath("/tmp/$(JOB_ID)", filename("intensity-$(i)")))
         intensity_t .+= res ./ Threads.nthreads()
     end
 
+    intensity_t ./= intensity_t[:, 1]
+
     save_params(p_f, params, incident_field, iterations)
-    save_matrix(t_f, t_span)
+    save_matrix(t_f, collect(t_span))
     save_matrix(i_f, intensity_t)
+    save_matrix(θ_f, collect(θ_span))
 end

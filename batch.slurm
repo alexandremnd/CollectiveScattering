@@ -4,7 +4,7 @@
 #SBATCH -p skylake
 #SBATCH -N 1
 #SBATCH -n 28
-#SBATCH --ntasks-per-core=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mail-user=alexandre.menard1@universite-paris-saclay.fr
 #SBATCH --mail-type=END
 #SBATCH --output=logs/%A-%a.out

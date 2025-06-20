@@ -24,11 +24,11 @@ println("Number of processes: ", nprocs())
 println("=====================================")
 
 # Simulation parameters
-Na  = 1000
-Nd  = 20
+Na  = 2000
+Nd  = 80
 Rd  = 9.0
-a   = 0.07
-Δ0  = 0.0
+a   = 0.01
+Δ0  = -0.4
 
 # Electric field parameters
 E0  = 1e-3
@@ -39,5 +39,6 @@ d   = bragg_periodicity(deg2rad(10))
 incident_field = GaussianBeam(E0, w0, θ)
 params = SimulationParameters(Na, Nd, Rd, a, d, Δ0)
 
-# plane_mean_intensity(params, incident_field, 2400, "data/2DStationnary-2/")
-reflection_coefficient(params, incident_field, range(-1.0, 1.0, length=10), 100)
+# plane_mean_intensity(params, incident_field, 1500)
+# reflection_coefficient(params, incident_field, range(-1.0, 1.0, length=10), 5000)
+dynamic_intensity(params, incident_field, 0:0.1:1, 100)
